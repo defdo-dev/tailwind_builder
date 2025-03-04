@@ -141,15 +141,7 @@ defmodule Defdo.TailwindBuilder do
 
   > It requires npm is installed on the builder system.
   """
-  def build(tailwind_version \\ @tailwind_latest, tailwind_src \\ File.cwd!(), debug \\ true) do
-    # Choose package manager based on version
-    {pkg_manager, cmd_opts} =
-      if Version.compare(tailwind_version, "4.0.0") in [:eq, :gt] do
-        {"pnpm", ["install", "--no-frozen-lockfile"]}
-      else
-        {"npm", ["install"]}
-      end
-
+  def build(tailwind_version \\ @tailwind_latest, tailwind_src \\ File.cwd!(), debug \\ false) do
     tailwind_root =
       tailwind_src
       |> tailwind_path(tailwind_version)
@@ -161,18 +153,41 @@ defmodule Defdo.TailwindBuilder do
       |> standalone_cli_path(tailwind_version)
       |> maybe_path()
 
-    Logger.debug(tailwind_root, label: "tailwind_root")
-    Logger.debug(standalone_root, label: "standalone_root")
+    version =
+      if Version.compare(tailwind_version, "4.0.0") in [:eq, :gt] do
+        :v4
+      else
+        :v3
+      end
+
+    case build_version(version, tailwind_root, standalone_root, debug) do
+      :ok ->
+        result = %{
+          root: tailwind_src,
+          version: tailwind_version,
+          tailwind_root: tailwind_root,
+          tailwind_standalone_root: standalone_root
+        }
+
+        {:ok, result}
+
+      {:error, message} ->
+        {:error, message}
+    end
+  end
+
+  defp build_version(:v3, tailwind_root, standalone_root, debug) do
+    pkg_manager = "npm"
 
     with {:pkg_manager, true} <- {:pkg_manager, installed?(pkg_manager)},
          # Install core dependencies
          {:root_install, {_output, 0}} <-
            {:root_install,
             if debug do
-              System.cmd(pkg_manager, cmd_opts, cd: tailwind_root)
+              System.cmd(pkg_manager, ["install"], cd: tailwind_root)
             else
               # Capture output instead of sending to /dev/null
-              System.cmd(pkg_manager, cmd_opts, cd: tailwind_root, stderr_to_stdout: true)
+              System.cmd(pkg_manager, ["install"], cd: tailwind_root, stderr_to_stdout: true)
             end},
          # Build the project
          {:root_build, {_output, 0}} <-
@@ -182,15 +197,68 @@ defmodule Defdo.TailwindBuilder do
             else
               # Capture output instead of sending to /dev/null
               System.cmd(pkg_manager, ["run", "build"], cd: tailwind_root, stderr_to_stdout: true)
+            end},
+         {:standalone_install, {_output, 0}} <-
+           {:standalone_install,
+            if debug do
+              System.cmd(pkg_manager, ["install"], cd: standalone_root)
+            else
+              # Capture output instead of sending to /dev/null
+              System.cmd(pkg_manager, ["install"], cd: standalone_root, stderr_to_stdout: true)
+            end},
+         {:standalone_build, {_, 0}} <-
+           {:standalone_build,
+            if debug do
+              System.cmd(pkg_manager, ["run", "build"], cd: standalone_root)
+            else
+              # Capture output instead of sending to /dev/null
+              System.cmd(pkg_manager, ["run", "build"],
+                cd: standalone_root,
+                stderr_to_stdout: true
+              )
             end} do
-      result = %{
-        root: tailwind_src,
-        version: tailwind_version,
-        tailwind_root: tailwind_root,
-        tailwind_standalone_root: standalone_root
-      }
+      :ok
+    else
+      {:pkg_manager, false} ->
+        {:error, "Ensure that `#{pkg_manager}` is installed."}
 
-      {:ok, result}
+      {step, {message, code}} ->
+        Logger.error([inspect(message)])
+
+        {:error,
+         "There is an error detected during the step #{step}. with exit code: #{code}, check logs to detect issues."}
+    end
+  end
+
+  defp build_version(:v4, tailwind_root, _standalone_root, debug) do
+    pkg_manager = "pnpm"
+
+    with {:pkg_manager, true} <- {:pkg_manager, installed?(pkg_manager)},
+         # Install core dependencies
+         {:root_install, {_output, 0}} <-
+           {:root_install,
+            if debug do
+              System.cmd(pkg_manager, ["install", "--no-frozen-lockfile"], cd: tailwind_root)
+            else
+              # Capture output instead of sending to /dev/null
+              System.cmd(pkg_manager, ["install", "--no-frozen-lockfile"],
+                cd: tailwind_root,
+                stderr_to_stdout: true
+              )
+            end},
+         # Build the project
+         {:root_build, {_output, 0}} <-
+           {:root_build,
+            if debug do
+              System.cmd(pkg_manager, ["run", "build"], cd: tailwind_root)
+            else
+              # Capture output instead of sending to /dev/null
+              System.cmd(pkg_manager, ["run", "build"],
+                cd: tailwind_root,
+                stderr_to_stdout: true
+              )
+            end} do
+      :ok
     else
       {:pkg_manager, false} ->
         {:error, "Ensure that `#{pkg_manager}` is installed."}
@@ -243,8 +311,8 @@ defmodule Defdo.TailwindBuilder do
   end
 
   def add_plugin(plugin, tailwind_version, root_path)
-      when is_map_key(plugin, "version") and is_map_key(plugin, "statement") do
-    if plugin["version"] =~ ":" and plugin["statement"] =~ ":" do
+      when is_map_key(plugin, "version") do
+    if plugin["version"] =~ ":" do
       plugin_name =
         plugin["version"] |> String.split(":") |> List.first() |> String.replace("\"", "")
 
@@ -254,7 +322,6 @@ defmodule Defdo.TailwindBuilder do
       Be sure that you have a valid values
 
       The version must be a valid `package.json` entry.
-      The statement must be a valid js object.
       """
     end
   end
@@ -262,21 +329,21 @@ defmodule Defdo.TailwindBuilder do
   defp apply_patch(tailwind_version, plugin_name, plugin, root_path) do
     files =
       if Version.compare(tailwind_version, "4.0.0") in [:eq, :gt] do
-        # V4 only needs package.json modification
-        ~w(package.json)
+        # ~w(package.json src/index.ts)
+        [{"", "package.json"}, {"src", "index.ts"}]
       else
-        ~w(package.json standalone.js)
+        [{"", "package.json"}, {"", "standalone.js"}]
       end
 
-    for filename <- files do
+    for {relative_path, filename} <- files do
       Logger.debug(["Patching ", filename, " with plugin ", plugin_name])
 
       content =
         tailwind_version
-        |> read_content(filename, root_path)
-        |> patch_content(filename, plugin)
+        |> read_content(filename, root_path, relative_path)
+        |> patch_content(filename, plugin, tailwind_version)
 
-      with :ok <- write_content(tailwind_version, filename, content, root_path) do
+      with :ok <- write_content(tailwind_version, filename, content, root_path, relative_path) do
         "Patch to #{filename} was applied."
       else
         error -> error
@@ -284,8 +351,8 @@ defmodule Defdo.TailwindBuilder do
     end
   end
 
-  defp read_content(tailwind_version, filename, root_path) do
-    path = path_for(root_path, tailwind_version, filename)
+  defp read_content(tailwind_version, filename, root_path, relative_path) do
+    path = path_for(root_path, tailwind_version, filename, relative_path)
 
     if path && File.exists?(path) do
       File.read!(path)
@@ -294,18 +361,24 @@ defmodule Defdo.TailwindBuilder do
     end
   end
 
-  defp write_content(tailwind_version, filename, content, root_path) do
+  defp write_content(tailwind_version, filename, content, root_path, relative_path) do
     root_path
-    |> path_for(tailwind_version, filename)
+    |> path_for(tailwind_version, filename, relative_path)
     |> File.write!(content)
   end
 
-  defp patch_content(content, "package.json", plugin) do
-    patch_package_json(content, plugin["version"])
+  defp patch_content(content, "package.json", plugin, tailwind_version) do
+    patch_package_json(content, plugin["version"], tailwind_version)
   end
 
-  defp patch_content(content, "standalone.js", plugin) do
+  defp patch_content(content, "standalone.js", plugin, _tailwind_version) do
     patch_standalone_js(content, plugin["statement"])
+  end
+
+  defp patch_content(content, "index.ts", plugin, _tailwind_version) do
+    plugin_name =
+      plugin["version"] |> String.split(":") |> List.first() |> String.replace("\"", "")
+    patch_index_ts(content, plugin_name)
   end
 
   # Helpers
@@ -320,12 +393,14 @@ defmodule Defdo.TailwindBuilder do
   The tailwind_src directory must contain the source code of tailwind.
   """
   @doc api: :low
-  def path_for(tailwind_src, tailwind_version, filename) do
+  def path_for(tailwind_src, tailwind_version, filename, relative_path \\ "") do
     base_path =
       if Version.compare(tailwind_version, "4.0.0") in [:eq, :gt] do
         Path.join([
           tailwind_src,
-          "tailwindcss-#{tailwind_version}"
+          "tailwindcss-#{tailwind_version}",
+          "packages",
+          "@tailwindcss-standalone"
         ])
       else
         Path.join([
@@ -335,7 +410,7 @@ defmodule Defdo.TailwindBuilder do
         ])
       end
 
-    path = Path.join(base_path, filename)
+    path = Path.join([base_path, relative_path, filename])
     Logger.debug("Looking for file at: #{path}")
     path
   end
@@ -379,14 +454,21 @@ defmodule Defdo.TailwindBuilder do
   Do the package.json patch
   """
   @doc api: :low
-  def patch_package_json(content, plugin) do
+  def patch_package_json(content, plugin, tailwind_version) do
     if content =~ plugin do
       Logger.info("It's previously patched, we don't do it again")
       content
     else
-      patch_string_at = """
-      "devDependencies": {
-      """
+      patch_string_at =
+        if Version.compare(tailwind_version, "4.0.0") in [:eq, :gt] do
+          """
+          "dependencies": {
+          """
+        else
+          """
+          "devDependencies": {
+          """
+        end
 
       case patch(content, patch_string_at, plugin, "    ") do
         {:ok, new_content} -> new_content
@@ -415,11 +497,90 @@ defmodule Defdo.TailwindBuilder do
     end
   end
 
-  defp patch(content, string_to_split_on, patch_text, spacer) do
+  @doc api: :low
+  def patch_index_ts(content, plugin_name) do
+    # Check if plugin is already present in any of the key sections
+    already_patched? =
+      content =~ ~s|id === '#{plugin_name}'| ||
+      content =~ ~s|case '#{plugin_name}'| ||
+      content =~ ~s|'#{plugin_name}': await import('#{plugin_name}')|
+
+    if already_patched? do
+      Logger.info("Plugin #{plugin_name} is already patched, skipping")
+      content
+    else
+      # Add to the __tw_resolve id checks
+      content = patch_tw_resolve(content, plugin_name)
+      # Add to the __tw_load function
+      content = patch_tw_load(content, plugin_name)
+      # Add to the bundled imports
+      content = patch_bundled_imports(content, plugin_name)
+
+      content
+    end
+  end
+
+  defp patch_tw_resolve(content, plugin_name) do
+    patch_string_at = """
+    id.startsWith('@tailwindcss/') ||
+    """
+
+    patch_text = "    id === '#{plugin_name}' ||"
+
+    case patch(content, patch_string_at, patch_text, "", false) do
+      {:ok, new_content} ->
+        patch_string_at = """
+        case '@tailwindcss/aspect-ratio':
+        """
+
+        patch_text = "    case '#{plugin_name}':"
+
+        case patch(new_content, patch_string_at, patch_text, "", false) do
+          {:ok, final_content} -> final_content
+          _error -> new_content
+        end
+
+      _error ->
+        content
+    end
+  end
+
+  defp patch_tw_load(content, plugin_name) do
+    patch_string_at = """
+    return require('@tailwindcss/aspect-ratio')
+    """
+
+    patch_text = ~s[  } else if (id === '#{plugin_name}' || id.endsWith('#{plugin_name}')) {
+    return require('#{plugin_name}')]
+
+    case patch(content, patch_string_at, patch_text, "", false) do
+      {:ok, new_content} -> new_content
+      _error -> content
+    end
+  end
+
+  defp patch_bundled_imports(content, plugin_name) do
+    patch_string_at = """
+      'tailwindcss/defaultTheme.js': await import('tailwindcss/defaultTheme'),
+    """
+
+    patch_text = "      '#{plugin_name}': await import('#{plugin_name}')"
+
+    case patch(content, patch_string_at, patch_text, "", true) do
+      {:ok, new_content} -> new_content
+      _error -> content
+    end
+  end
+
+  defp patch(content, string_to_split_on, patch_text, spacer, add_comma \\ true) do
     case split_with_self(content, string_to_split_on) do
       {beginning, splitter, rest} ->
         new_content =
-          IO.iodata_to_binary([beginning, splitter, spacer, patch_text, ?,, ?\n, rest])
+          if add_comma do
+            IO.iodata_to_binary([beginning, splitter, spacer, patch_text, ?,, ?\n, rest])
+          else
+            IO.iodata_to_binary([beginning, splitter, spacer, patch_text, ?\n, rest])
+          end
 
         {:ok, new_content}
 
