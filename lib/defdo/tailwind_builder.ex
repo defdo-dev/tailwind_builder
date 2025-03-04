@@ -12,18 +12,21 @@ defmodule Defdo.TailwindBuilder do
   """
   require Logger
 
-  @tailwind_latest "3.3.0"
+  @tailwind_latest "3.4.17"
   @available_plugins %{
     "daisyui" => %{
-      "version" => ~s["daisyui": "^2.51.5"],
+      "version" => ~s["daisyui": "^4.12.23"],
       "statement" => ~s['daisyui': require('daisyui')]
+    },
+    "daisyui_v5" => %{
+      "version" => ~s["daisyui": "5.0.0"]
     }
   }
 
   def download(tailwind_src \\ File.cwd!(), tailwind_version \\ @tailwind_latest) do
     tar = "tar"
 
-    if is_installed?("tar") do
+    if installed?("tar") do
       repo = "tailwindcss"
       release_package = "#{tailwind_version}.tar.gz"
       downloaded_tar_file = Path.join(tailwind_src, release_package)
@@ -32,6 +35,9 @@ defmodule Defdo.TailwindBuilder do
       with {:filename, true} <- {:filename, maybe_download(downloaded_tar_file, url)},
            {:untar, :ok} <- {:untar, untar(downloaded_tar_file)},
            {:clean_tmp, :ok} <- {:clean_tmp, File.rm!(downloaded_tar_file)} do
+        # Add debug info
+        Logger.debug("\nExtracted files in #{tailwind_src}:")
+
         result = %{
           root: tailwind_src,
           version: tailwind_version
@@ -61,7 +67,17 @@ defmodule Defdo.TailwindBuilder do
 
   defp untar(path_tar_file) do
     if File.exists?(path_tar_file) do
-      :erl_tar.extract(path_tar_file, [:compressed])
+      Logger.debug("Extracting #{path_tar_file}")
+
+      case :erl_tar.extract(path_tar_file, [:compressed, {:cwd, Path.dirname(path_tar_file)}]) do
+        :ok ->
+          Logger.info("Extraction successful")
+          :ok
+
+        error ->
+          Logger.error("Extraction failed: #{inspect(error)}")
+          error
+      end
     else
       {:error, "#{path_tar_file} is an invalid path."}
     end
@@ -125,14 +141,20 @@ defmodule Defdo.TailwindBuilder do
 
   > It requires npm is installed on the builder system.
   """
-  def build(tailwind_src \\ File.cwd!(), tailwind_version \\ @tailwind_latest) do
-    npm = "npm"
+  def build(tailwind_version \\ @tailwind_latest, tailwind_src \\ File.cwd!(), debug \\ true) do
+    # Choose package manager based on version
+    {pkg_manager, cmd_opts} =
+      if Version.compare(tailwind_version, "4.0.0") in [:eq, :gt] do
+        {"pnpm", ["install", "--no-frozen-lockfile"]}
+      else
+        {"npm", ["install"]}
+      end
 
     tailwind_root =
       tailwind_src
       |> tailwind_path(tailwind_version)
       |> maybe_path() ||
-        raise "Ensure that you are pointing to the tailwind source; we can't find the standalone-cli directory"
+        raise "Ensure that you are pointing to the tailwind source"
 
     standalone_root =
       tailwind_src
@@ -142,21 +164,25 @@ defmodule Defdo.TailwindBuilder do
     Logger.debug(tailwind_root, label: "tailwind_root")
     Logger.debug(standalone_root, label: "standalone_root")
 
-    with {:npm, true} <- {:npm, is_installed?(npm)},
-         {:env_swap_engine, {_, 0}} <-
-           {:env_swap_engine,
-            System.cmd("node", ["./scripts/swap-engines.js"], cd: tailwind_root, into: IO.stream())},
-         {:env_setup_install, {_, 0}} <-
-           {:env_setup_install,
-            System.cmd(npm, ["install"], cd: tailwind_root, into: IO.stream())},
-         {:env_setup_build, {_, 0}} <-
-           {:env_setup_build,
-            System.cmd(npm, ["run", "build"], cd: tailwind_root, into: IO.stream())},
-         {:install_deps, {_, 0}} <-
-           {:install_deps, System.cmd(npm, ["install"], cd: standalone_root, into: IO.stream())},
-         {:build_target, {_, 0}} <-
-           {:build_target,
-            System.cmd(npm, ["run", "build"], cd: standalone_root, into: IO.stream())} do
+    with {:pkg_manager, true} <- {:pkg_manager, installed?(pkg_manager)},
+         # Install core dependencies
+         {:root_install, {_output, 0}} <-
+           {:root_install,
+            if debug do
+              System.cmd(pkg_manager, cmd_opts, cd: tailwind_root)
+            else
+              # Capture output instead of sending to /dev/null
+              System.cmd(pkg_manager, cmd_opts, cd: tailwind_root, stderr_to_stdout: true)
+            end},
+         # Build the project
+         {:root_build, {_output, 0}} <-
+           {:root_build,
+            if debug do
+              System.cmd(pkg_manager, ["run", "build"], cd: tailwind_root)
+            else
+              # Capture output instead of sending to /dev/null
+              System.cmd(pkg_manager, ["run", "build"], cd: tailwind_root, stderr_to_stdout: true)
+            end} do
       result = %{
         root: tailwind_src,
         version: tailwind_version,
@@ -166,8 +192,8 @@ defmodule Defdo.TailwindBuilder do
 
       {:ok, result}
     else
-      {:npm, false} ->
-        {:error, "Ensure that `#{npm}` is installed."}
+      {:pkg_manager, false} ->
+        {:error, "Ensure that `#{pkg_manager}` is installed."}
 
       {step, {message, code}} ->
         Logger.error([inspect(message)])
@@ -177,12 +203,31 @@ defmodule Defdo.TailwindBuilder do
     end
   end
 
-  def deploy(tailwind_src \\ File.cwd!(), tailwind_version \\ @tailwind_latest) do
-    # working_dir =
-    tailwind_src
-    |> standalone_cli_path(tailwind_version)
-    |> Path.join("dist")
-    |> maybe_path() || raise "Ensure that you `build` first"
+  def deploy_r2(
+        tailwind_version \\ @tailwind_latest,
+        tailwind_src \\ File.cwd!(),
+        bucket \\ "defdo"
+      ) do
+    working_dir =
+      tailwind_src
+      |> standalone_cli_path(tailwind_version)
+      |> Path.join("dist")
+      |> maybe_path() || raise "Ensure that you `build` first"
+
+    to_distribute =
+      working_dir
+      |> Path.join("/tailwindcss*")
+      |> Path.wildcard()
+
+    for file_path <- to_distribute do
+      filename = Path.basename(file_path)
+      object = "tailwind_cli_daisyui/v#{tailwind_version}/#{filename}"
+
+      file_path
+      |> ExAws.S3.Upload.stream_file()
+      |> ExAws.S3.upload(bucket, object)
+      |> ExAws.request!()
+    end
   end
 
   @doc """
@@ -215,7 +260,15 @@ defmodule Defdo.TailwindBuilder do
   end
 
   defp apply_patch(tailwind_version, plugin_name, plugin, root_path) do
-    for filename <- ~w(package.json standalone.js) do
+    files =
+      if Version.compare(tailwind_version, "4.0.0") in [:eq, :gt] do
+        # V4 only needs package.json modification
+        ~w(package.json)
+      else
+        ~w(package.json standalone.js)
+      end
+
+    for filename <- files do
       Logger.debug(["Patching ", filename, " with plugin ", plugin_name])
 
       content =
@@ -232,9 +285,13 @@ defmodule Defdo.TailwindBuilder do
   end
 
   defp read_content(tailwind_version, filename, root_path) do
-    root_path
-    |> path_for(tailwind_version, filename)
-    |> File.read!()
+    path = path_for(root_path, tailwind_version, filename)
+
+    if path && File.exists?(path) do
+      File.read!(path)
+    else
+      raise "File not found: #{filename} in path: #{root_path}"
+    end
   end
 
   defp write_content(tailwind_version, filename, content, root_path) do
@@ -253,7 +310,7 @@ defmodule Defdo.TailwindBuilder do
 
   # Helpers
   @doc api: :low
-  def is_installed?(program) do
+  def installed?(program) do
     if System.find_executable("#{program}"), do: true, else: false
   end
 
@@ -264,10 +321,23 @@ defmodule Defdo.TailwindBuilder do
   """
   @doc api: :low
   def path_for(tailwind_src, tailwind_version, filename) do
-    tailwind_src
-    |> standalone_cli_path(tailwind_version)
-    |> Path.join(filename)
-    |> maybe_path()
+    base_path =
+      if Version.compare(tailwind_version, "4.0.0") in [:eq, :gt] do
+        Path.join([
+          tailwind_src,
+          "tailwindcss-#{tailwind_version}"
+        ])
+      else
+        Path.join([
+          tailwind_src,
+          "tailwindcss-#{tailwind_version}",
+          "standalone-cli"
+        ])
+      end
+
+    path = Path.join(base_path, filename)
+    Logger.debug("Looking for file at: #{path}")
+    path
   end
 
   @doc """
@@ -281,12 +351,28 @@ defmodule Defdo.TailwindBuilder do
 
   @doc api: :low
   def standalone_cli_path(tailwind_src, tailwind_version) do
-    Path.join(tailwind_src, "/*-#{tailwind_version}/standalone-cli")
+    if Version.compare(tailwind_version, "4.0.0") in [:eq, :gt] do
+      Path.join([
+        tailwind_src,
+        "tailwindcss-#{tailwind_version}",
+        "packages/@tailwindcss-standalone"
+      ])
+    else
+      Path.join([
+        tailwind_src,
+        "tailwindcss-#{tailwind_version}",
+        "standalone-cli"
+      ])
+    end
   end
 
   @doc api: :low
   def tailwind_path(tailwind_src, tailwind_version) do
-    Path.join(tailwind_src, "/*-#{tailwind_version}")
+    # Match the same pattern as standalone_cli_path
+    Path.join([
+      tailwind_src,
+      "tailwindcss-#{tailwind_version}"
+    ])
   end
 
   @doc """
