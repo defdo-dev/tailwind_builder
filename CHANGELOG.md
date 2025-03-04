@@ -1,6 +1,10 @@
-## TODO
+## Unreleased
 
-- [ ] Upload to S3
+- Added support for Tailwind CSS v4
+- Added support for DaisyUI v5
+- Implemented patching for index.ts in Tailwind v4
+- Added R2 deployment functionality
+- Fixed comma issue in TypeScript patching
 
 ## 0.1.0
 

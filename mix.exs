@@ -7,7 +7,8 @@ defmodule Defdo.TailwindBuilder.MixProject do
       version: "0.1.0",
       elixir: "~> 1.14",
       start_permanent: Mix.env() == :prod,
-      deps: deps()
+      deps: deps(),
+      aliases: aliases()
     ]
   end
 
@@ -23,7 +24,20 @@ defmodule Defdo.TailwindBuilder.MixProject do
   defp deps do
     [
       {:castore, ">= 0.0.0"},
-      {:mox, "~> 1.0"}
+      {:mox, "~> 1.0"},
+      {:ex_aws, "~> 2.5"},
+      {:ex_aws_s3, "~> 2.5"},
+      {:hackney, "~> 1.20"},
+      {:jason, "~> 1.4"},
+      {:sweet_xml, "~> 0.7.4"}
+    ]
+  end
+
+  defp aliases do
+    [
+      "tailwind.setup": [
+        "tailwind.install_deps"
+      ]
     ]
   end
 end

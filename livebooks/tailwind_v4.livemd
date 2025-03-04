@@ -1,0 +1,110 @@
+# Tailwind Builder
+
+## Build a tailwind 4 with daisyui 5
+
+### Setup Instructions for `tailwind_builder`
+
+#### 1. Initialize the Project
+
+Start the project using the following command:
+
+```sh
+iex --name builder@127.0.0.1 --cookie defdo.dev -S mix
+```
+
+Repository: [tailwind_builder](https://github.com/defdo-dev/tailwind_builder)
+
+#### 2. Connect the Livebook
+
+After starting the project, update the runtime settings in Livebook to connect properly.
+
+#### 3. Configure Secrets for Deployment
+
+Before deploying, set the required Cloudflare R2 credentials:
+
+```
+export R2_AWS_ACCESS_KEY_ID=<your-access-key>
+export R2_AWS_SECRET_ACCESS_KEY=<your-secret-key>
+export R2_AWS_ACCOUNT_ID=<your-account-id>
+```
+
+For more details, refer to the Cloudflare [R2 Documentation](https://developers.cloudflare.com/r2/).
+
+```elixir
+# Step 1: Set up working directory
+tmp_dir = Path.join("/tmp", "build_tw")
+File.mkdir_p!(tmp_dir)
+IO.puts("Working directory created at: #{tmp_dir}")
+
+# Step 2: Configure Tailwind version
+tailwind_version = "4.0.9"
+path = Path.join(tmp_dir, "tailwindcss-#{tailwind_version}")
+IO.puts("Using Tailwind CSS version: #{tailwind_version}")
+
+# Step 3: Download and patch with DaisyUI plugin if not already done
+if not File.exists?(path) do
+  IO.puts("Downloading Tailwind source...")
+  {:ok, download_result} = Defdo.TailwindBuilder.download(tmp_dir, tailwind_version)
+  IO.puts("Download complete: #{inspect(download_result)}")
+  
+  # Define DaisyUI v5 plugin configuration
+  daisyui_v5 = %{
+    "version" => ~s["daisyui": "^5.0.0"]
+  }
+  
+  IO.puts("Adding DaisyUI v5 plugin...")
+  patch_result = Defdo.TailwindBuilder.add_plugin(daisyui_v5, tailwind_version, tmp_dir)
+  IO.puts("Plugin added: #{inspect(patch_result)}")
+else
+  IO.puts("Tailwind source already exists at #{path}")
+end
+```
+
+```elixir
+# Step 4: Build the Tailwind CLI
+IO.puts("Building Tailwind CLI...")
+{:ok, build_result} = Defdo.TailwindBuilder.build(tailwind_version, tmp_dir)
+IO.puts("Build complete: #{inspect(build_result)}")
+```
+
+## Deploy to r2
+
+```elixir
+# Fetch required environment variables
+access_key = System.get_env("LB_R2_AWS_ACCESS_KEY_ID") || 
+  raise "Missing R2_AWS_ACCESS_KEY_ID environment variable"
+  
+secret_access_key = System.get_env("LB_R2_AWS_SECRET_ACCESS_KEY") || 
+  raise "Missing R2_AWS_SECRET_ACCESS_KEY environment variable"
+  
+account_id = System.get_env("LB_R2_AWS_ACCOUNT_ID") || 
+  raise "Missing R2_AWS_ACCOUNT_ID environment variable"
+
+# Configure ExAws to work with Cloudflare R2
+Application.put_env(:ex_aws, :access_key_id, access_key)
+Application.put_env(:ex_aws, :secret_access_key, secret_access_key)
+Application.put_env(:ex_aws, :region, "auto")
+Application.put_env(:ex_aws, :json_codec, Jason)
+Application.put_env(:ex_aws, :s3, host: "#{account_id}.r2.cloudflarestorage.com")
+
+# Enable debug during development (comment out in production)
+# Application.put_env(:ex_aws, :debug_requests, true)
+
+IO.puts("R2 configuration complete")
+```
+
+```elixir
+# Step 6: Deploy to R2
+IO.puts("Deploying to R2...")
+deploy_result = Defdo.TailwindBuilder.deploy_r2(tailwind_version, tmp_dir)
+IO.puts("Deployment complete!")
+
+# Print deployment summary
+IO.puts("\n=== Deployment Summary ===")
+IO.puts("Tailwind version: #{tailwind_version}")
+IO.puts("Build directory: #{tmp_dir}")
+IO.puts("Files deployed: #{length(deploy_result)}")
+IO.puts("========================")
+```
+
+<!-- livebook:{"offset":3378,"stamp":{"token":"XCP.jnGDDW7Ue2U62lpZMoNzpD2tq5jqM7F1M3sNEw_ve15abpZy2xvLR2WhbUrSFg1q2fVIUeCqm8L3AesrF-GnPRPIB4aA3nxFlLuLuUMq7Gu7lGS3JZbcPeDm80F-vmzwb28ARsRB3SQpzCoLGIJiXvbfUCzf-zUqWBfi4Wwgma_YVfc_abtmJv1RCWrPYq7wbKg","version":2}} -->
