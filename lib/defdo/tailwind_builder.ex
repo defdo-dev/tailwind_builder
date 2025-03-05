@@ -378,6 +378,7 @@ defmodule Defdo.TailwindBuilder do
   defp patch_content(content, "index.ts", plugin, _tailwind_version) do
     plugin_name =
       plugin["version"] |> String.split(":") |> List.first() |> String.replace("\"", "")
+
     patch_index_ts(content, plugin_name)
   end
 
@@ -502,8 +503,8 @@ defmodule Defdo.TailwindBuilder do
     # Check if plugin is already present in any of the key sections
     already_patched? =
       content =~ ~s|id === '#{plugin_name}'| ||
-      content =~ ~s|case '#{plugin_name}'| ||
-      content =~ ~s|'#{plugin_name}': await import('#{plugin_name}')|
+        content =~ ~s|id.startsWith('#{plugin_name}/')| ||
+        content =~ ~s|'#{plugin_name}': await import('#{plugin_name}')|
 
     if already_patched? do
       Logger.info("Plugin #{plugin_name} is already patched, skipping")
@@ -511,10 +512,14 @@ defmodule Defdo.TailwindBuilder do
     else
       # Add to the __tw_resolve id checks
       content = patch_tw_resolve(content, plugin_name)
+      # Add special path handling for bundled modules
+      content = patch_special_path(content, plugin_name)
       # Add to the __tw_load function
       content = patch_tw_load(content, plugin_name)
       # Add to the bundled imports
       content = patch_bundled_imports(content, plugin_name)
+      # Add subpath imports if needed (like daisyui/theme)
+      content = patch_subpath_imports(content, plugin_name)
 
       content
     end
@@ -525,20 +530,26 @@ defmodule Defdo.TailwindBuilder do
     id.startsWith('@tailwindcss/') ||
     """
 
-    patch_text = "    id === '#{plugin_name}' ||"
+    patch_text = ~s[id === '#{plugin_name}' ||
+    id.startsWith('#{plugin_name}/') ||]
 
-    case patch(content, patch_string_at, patch_text, "", false) do
+    case patch(content, patch_string_at, patch_text, "    ", false) do
+      {:ok, new_content} -> new_content
+      _error -> content
+    end
+  end
+
+  defp patch_special_path(content, plugin_name) do
+    # Look for the line where id transformation begins
+    patch_string_at = ~s[  id = id.startsWith('tailwindcss/')]
+
+    patch_text =
+      ~s[  if (id === '#{plugin_name}' || id.startsWith('#{plugin_name}/')) { return `/$bunfs/root/${id}`; }
+    ]
+
+    case patch(content, patch_string_at, patch_text, "", false, :before) do
       {:ok, new_content} ->
-        patch_string_at = """
-        case '@tailwindcss/aspect-ratio':
-        """
-
-        patch_text = "    case '#{plugin_name}':"
-
-        case patch(new_content, patch_string_at, patch_text, "", false) do
-          {:ok, final_content} -> final_content
-          _error -> new_content
-        end
+        new_content
 
       _error ->
         content
@@ -546,12 +557,25 @@ defmodule Defdo.TailwindBuilder do
   end
 
   defp patch_tw_load(content, plugin_name) do
-    patch_string_at = """
-    return require('@tailwindcss/aspect-ratio')
-    """
+    patch_string_at = ~s[globalThis.__tw_load = async (id) => {]
 
-    patch_text = ~s[  } else if (id === '#{plugin_name}' || id.endsWith('#{plugin_name}')) {
-    return require('#{plugin_name}')]
+    patch_text = ~s[
+    const realId = id.includes('/$bunfs/root/')
+      ? id.replace(/^.*\\/\\$bunfs\\/root\\//, '')
+      : id;]
+
+    content =
+      case patch(content, patch_string_at, patch_text, "", false) do
+        {:ok, new_content} -> new_content
+        _error -> content
+      end
+
+    # Now add the plugin-specific load handler
+    patch_string_at = ~s[    return require('@tailwindcss/aspect-ratio')]
+
+    patch_text = ~s[
+    } else if (realId === '#{plugin_name}' || realId.startsWith('#{plugin_name}/')) {
+    return require(realId);]
 
     case patch(content, patch_string_at, patch_text, "", false) do
       {:ok, new_content} -> new_content
@@ -564,23 +588,61 @@ defmodule Defdo.TailwindBuilder do
       'tailwindcss/defaultTheme.js': await import('tailwindcss/defaultTheme'),
     """
 
-    patch_text = "      '#{plugin_name}': await import('#{plugin_name}')"
+    patch_text = ~s[      '#{plugin_name}': await import('#{plugin_name}'),]
 
-    case patch(content, patch_string_at, patch_text, "", true) do
+    case patch(content, patch_string_at, patch_text, "", false) do
       {:ok, new_content} -> new_content
       _error -> content
     end
   end
 
-  defp patch(content, string_to_split_on, patch_text, spacer, add_comma \\ true) do
+  defp patch_subpath_imports(content, plugin_name) do
+    # Add common subpaths for the plugin
+    subpaths =
+      case plugin_name do
+        "daisyui" -> ["theme"]
+        _ -> []
+      end
+
+    Enum.reduce(subpaths, content, fn subpath, updated_content ->
+      patch_string_at = ~s[      '#{plugin_name}': await import('#{plugin_name}'),]
+
+      patch_text = ~s[
+      '#{plugin_name}/#{subpath}': await import('#{plugin_name}/#{subpath}'),]
+
+      case patch(updated_content, patch_string_at, patch_text, "", false) do
+        {:ok, new_content} -> new_content
+        _error -> updated_content
+      end
+    end)
+  end
+
+  defp patch(
+         content,
+         string_to_split_on,
+         patch_text,
+         spacer,
+         add_comma \\ true,
+         insert_mode \\ :after
+       ) do
     case split_with_self(content, string_to_split_on) do
       {beginning, splitter, rest} ->
-        new_content =
-          if add_comma do
-            IO.iodata_to_binary([beginning, splitter, spacer, patch_text, ?,, ?\n, rest])
+        order_parts =
+          if insert_mode == :before do
+            if add_comma do
+              [beginning, patch_text, ?,, ?\n, splitter, spacer, rest]
+            else
+              [beginning, patch_text, ?\n, splitter, spacer, rest]
+            end
           else
-            IO.iodata_to_binary([beginning, splitter, spacer, patch_text, ?\n, rest])
+            if add_comma do
+              [beginning, splitter, spacer, patch_text, ?,, ?\n, rest]
+            else
+              [beginning, splitter, spacer, patch_text, ?\n, rest]
+            end
           end
+
+        new_content = IO.iodata_to_binary(order_parts)
 
         {:ok, new_content}
 
