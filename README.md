@@ -16,6 +16,13 @@ A tool for building custom Tailwind CSS CLI binaries with integrated plugins lik
 - Rust
 - Git
 
+The requirements dependencies can be managed via mix.
+
+```bash
+mix tailwind.install_deps   # Installs Tailwind CLI build dependencies
+mix tailwind.uninstall_deps # Uninstalls Tailwind CLI build dependencies
+```
+
 ## Basic Usage
 ```elixir
 # Version 3.x
