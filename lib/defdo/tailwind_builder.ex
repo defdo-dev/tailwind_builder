@@ -543,7 +543,8 @@ defmodule Defdo.TailwindBuilder do
     # Look for the line where id transformation begins
     patch_string_at = ~s[  id = id.startsWith('tailwindcss/')]
 
-    patch_text = ~s[  if (id === '#{plugin_name}' || id.startsWith('#{plugin_name}/')) { return `/$bunfs/root/${id}`; }
+    patch_text =
+      ~s[  if (id === '#{plugin_name}' || id.startsWith('#{plugin_name}/')) { return `/$bunfs/root/${id}`; }
     ]
 
     case patch(content, patch_string_at, patch_text, "", false, :before) do
@@ -563,10 +564,11 @@ defmodule Defdo.TailwindBuilder do
       ? id.replace(/^.*\\/\\$bunfs\\/root\\//, '')
       : id;]
 
-    content = case patch(content, patch_string_at, patch_text, "", false) do
-      {:ok, new_content} -> new_content
-      _error -> content
-    end
+    content =
+      case patch(content, patch_string_at, patch_text, "", false) do
+        {:ok, new_content} -> new_content
+        _error -> content
+      end
 
     # Now add the plugin-specific load handler
     patch_string_at = ~s[    return require('@tailwindcss/aspect-ratio')]

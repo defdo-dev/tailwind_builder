@@ -116,7 +116,10 @@ defmodule Defdo.TailwindBuilderTest do
       assert patched_content =~ "if (id === 'daisyui' || id.startsWith('daisyui/')) {"
       assert patched_content =~ "return `/$bunfs/root/${id}`"
       assert patched_content =~ "const realId = id.includes('/$bunfs/root/')"
-      assert patched_content =~ "} else if (realId === 'daisyui' || realId.startsWith('daisyui/')) {"
+
+      assert patched_content =~
+               "} else if (realId === 'daisyui' || realId.startsWith('daisyui/')) {"
+
       assert patched_content =~ "'daisyui': await import('daisyui')"
       assert patched_content =~ "'daisyui/theme': await import('daisyui/theme')"
 
