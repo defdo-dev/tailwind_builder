@@ -110,11 +110,15 @@ defmodule Defdo.TailwindBuilderTest do
       # Test patching with daisyui
       patched_content = TailwindBuilder.patch_index_ts(index_ts, "daisyui")
 
-      # Verify all three patch points
+      # Verify all patch points
       assert patched_content =~ "id === 'daisyui' ||"
-      assert patched_content =~ "case 'daisyui':"
-      assert patched_content =~ "} else if (id === 'daisyui' || id.endsWith('daisyui')) {"
+      assert patched_content =~ "id.startsWith('daisyui/') ||"
+      assert patched_content =~ "if (id === 'daisyui' || id.startsWith('daisyui/')) {"
+      assert patched_content =~ "return `/$bunfs/root/${id}`"
+      assert patched_content =~ "const realId = id.includes('/$bunfs/root/')"
+      assert patched_content =~ "} else if (realId === 'daisyui' || realId.startsWith('daisyui/')) {"
       assert patched_content =~ "'daisyui': await import('daisyui')"
+      assert patched_content =~ "'daisyui/theme': await import('daisyui/theme')"
 
       # Verify it doesn't add duplicate patches
       re_patched = TailwindBuilder.patch_index_ts(patched_content, "daisyui")
