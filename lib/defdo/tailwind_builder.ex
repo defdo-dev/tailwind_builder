@@ -230,7 +230,7 @@ defmodule Defdo.TailwindBuilder do
     end
   end
 
-  defp build_version(:v4, tailwind_root, _standalone_root, debug) do
+  defp build_version(:v4, tailwind_root, standalone_root, debug) do
     pkg_manager = "pnpm"
 
     with {:pkg_manager, true} <- {:pkg_manager, installed?(pkg_manager)},
@@ -255,6 +255,20 @@ defmodule Defdo.TailwindBuilder do
               # Capture output instead of sending to /dev/null
               System.cmd(pkg_manager, ["run", "build"],
                 cd: tailwind_root,
+                stderr_to_stdout: true
+              )
+            end},
+         # we need to rebuild at standalone level to get the correct bundle
+         # otherwise the bundle throughs the error:
+         # Cannot require module @tailwindcss/oxide-darwin-arm64
+         {:rebuild_standalone, {_output, 0}} <-
+           {:rebuild_standalone,
+            if debug do
+              System.cmd(pkg_manager, ["run", "build"], cd: standalone_root)
+            else
+              # Capture output instead of sending to /dev/null
+              System.cmd(pkg_manager, ["run", "build"],
+                cd: standalone_root,
                 stderr_to_stdout: true
               )
             end} do
@@ -518,8 +532,6 @@ defmodule Defdo.TailwindBuilder do
       content = patch_tw_load(content, plugin_name)
       # Add to the bundled imports
       content = patch_bundled_imports(content, plugin_name)
-      # Add subpath imports if needed (like daisyui/theme)
-      content = patch_subpath_imports(content, plugin_name)
 
       content
     end
@@ -530,8 +542,7 @@ defmodule Defdo.TailwindBuilder do
     id.startsWith('@tailwindcss/') ||
     """
 
-    patch_text = ~s[id === '#{plugin_name}' ||
-    id.startsWith('#{plugin_name}/') ||]
+    patch_text = ~s[id.startsWith('#{plugin_name}') ||]
 
     case patch(content, patch_string_at, patch_text, "    ", false) do
       {:ok, new_content} -> new_content
@@ -541,10 +552,10 @@ defmodule Defdo.TailwindBuilder do
 
   defp patch_special_path(content, plugin_name) do
     # Look for the line where id transformation begins
-    patch_string_at = ~s[  id = id.startsWith('tailwindcss/')]
+    patch_string_at = ~s[  switch (id) {]
 
     patch_text =
-      ~s[  if (id === '#{plugin_name}' || id.startsWith('#{plugin_name}/')) { return `/$bunfs/root/${id}`; }
+      ~s[  if (/(\\/)?#{plugin_name}(\\/.+)?$/.test(id)) { return id }
     ]
 
     case patch(content, patch_string_at, patch_text, "", false, :before) do
@@ -557,25 +568,11 @@ defmodule Defdo.TailwindBuilder do
   end
 
   defp patch_tw_load(content, plugin_name) do
-    patch_string_at = ~s[globalThis.__tw_load = async (id) => {]
-
-    patch_text = ~s[
-    const realId = id.includes('/$bunfs/root/')
-      ? id.replace(/^.*\\/\\$bunfs\\/root\\//, '')
-      : id;]
-
-    content =
-      case patch(content, patch_string_at, patch_text, "", false) do
-        {:ok, new_content} -> new_content
-        _error -> content
-      end
-
-    # Now add the plugin-specific load handler
     patch_string_at = ~s[    return require('@tailwindcss/aspect-ratio')]
 
     patch_text = ~s[
-    } else if (realId === '#{plugin_name}' || realId.startsWith('#{plugin_name}/')) {
-    return require(realId);]
+  } else if (/(\\/)?#{plugin_name}(\\/.+)?$/.test(id)) {
+    return require('#{plugin_name}')]
 
     case patch(content, patch_string_at, patch_text, "", false) do
       {:ok, new_content} -> new_content
@@ -594,27 +591,6 @@ defmodule Defdo.TailwindBuilder do
       {:ok, new_content} -> new_content
       _error -> content
     end
-  end
-
-  defp patch_subpath_imports(content, plugin_name) do
-    # Add common subpaths for the plugin
-    subpaths =
-      case plugin_name do
-        "daisyui" -> ["theme"]
-        _ -> []
-      end
-
-    Enum.reduce(subpaths, content, fn subpath, updated_content ->
-      patch_string_at = ~s[      '#{plugin_name}': await import('#{plugin_name}'),]
-
-      patch_text = ~s[
-      '#{plugin_name}/#{subpath}': await import('#{plugin_name}/#{subpath}'),]
-
-      case patch(updated_content, patch_string_at, patch_text, "", false) do
-        {:ok, new_content} -> new_content
-        _error -> updated_content
-      end
-    end)
   end
 
   defp patch(
