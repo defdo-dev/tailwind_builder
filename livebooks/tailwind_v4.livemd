@@ -37,7 +37,7 @@ File.mkdir_p!(tmp_dir)
 IO.puts("Working directory created at: #{tmp_dir}")
 
 # Step 2: Configure Tailwind version
-tailwind_version = "4.0.9"
+tailwind_version = "4.0.10"
 path = Path.join(tmp_dir, "tailwindcss-#{tailwind_version}")
 IO.puts("Using Tailwind CSS version: #{tailwind_version}")
 
@@ -107,4 +107,4 @@ IO.puts("Files deployed: #{length(deploy_result)}")
 IO.puts("========================")
 ```
 
-<!-- livebook:{"offset":3378,"stamp":{"token":"XCP.4KXbGPuXT16Dmyu9IfB-byoSfKgKw1OQSoHKw--Oyah9TqKbg_CwXYlbdADwmcz8a2FnUZstXRrQqzM6zXAgqFAET6xZ4Y7ciQ3e00_z6qsziDPen2OXkiMEEbNbtql0wywn7u2Asch8OUKgPTq7-0KSjE8rWOjiCuMPHV1aH07QN3CVjHFKbCPTS4aCZBQd_D8","version":2}} -->
+<!-- livebook:{"offset":3379,"stamp":{"token":"XCP.7BhC9HQI20ncXf5QPylut5aktKKtUqxFeAd0clF5pS6eZQtYAKvtwfqcpGXe3TPcO_IAE8X0CnzuUFaXaKdWJnbn3c9VzAPH_vs_Vguz6gt3pxsuwi7xp8zJ1r2WcxbaHaHYzUvdAeeqUCmtF8QLSZbQSgw2EGYNdkKGMaN9ENxbpWNaKzqvMqD1chh76p6JV6U","version":2}} -->
