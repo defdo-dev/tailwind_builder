@@ -37,7 +37,7 @@ File.mkdir_p!(tmp_dir)
 IO.puts("Working directory created at: #{tmp_dir}")
 
 # Step 2: Configure Tailwind version
-tailwind_version = "4.0.10"
+tailwind_version = "4.1.11"
 path = Path.join(tmp_dir, "tailwindcss-#{tailwind_version}")
 IO.puts("Using Tailwind CSS version: #{tailwind_version}")
 
@@ -49,7 +49,7 @@ if not File.exists?(path) do
   
   # Define DaisyUI v5 plugin configuration
   daisyui_v5 = %{
-    "version" => ~s["daisyui": "^5.0.0"]
+    "version" => ~s["daisyui": "^5.0.48"]
   }
   
   IO.puts("Adding DaisyUI v5 plugin...")
@@ -107,4 +107,4 @@ IO.puts("Files deployed: #{length(deploy_result)}")
 IO.puts("========================")
 ```
 
-<!-- livebook:{"offset":3379,"stamp":{"token":"XCP.7BhC9HQI20ncXf5QPylut5aktKKtUqxFeAd0clF5pS6eZQtYAKvtwfqcpGXe3TPcO_IAE8X0CnzuUFaXaKdWJnbn3c9VzAPH_vs_Vguz6gt3pxsuwi7xp8zJ1r2WcxbaHaHYzUvdAeeqUCmtF8QLSZbQSgw2EGYNdkKGMaN9ENxbpWNaKzqvMqD1chh76p6JV6U","version":2}} -->
+<!-- livebook:{"offset":3379,"stamp":{"token":"XCP.uCMjcIRBLDPhg1mh5ciH7JWth1ngE1Gq9m49zNIzXHiEtJEJ5WDg5gNiAGlbKcNhxcqlEXz15sRC_poDI41Ho3bM9qSf1FvVP6SyxVne061LspY7awjH_RQoiIL76LgXOLgNPYnd6xUuRm6ujuIaqIc__R7ex1ziEd88UoDopwZA7WKElhFTGhp9C6TXdhqTpEM","version":2}} -->
