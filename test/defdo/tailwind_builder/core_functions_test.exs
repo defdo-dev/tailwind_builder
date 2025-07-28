@@ -177,16 +177,20 @@ defmodule Defdo.TailwindBuilder.CoreFunctionsTest do
     end
 
     test "handles patch errors gracefully" do
-      # Invalid content without target section
+      # Test with malformed JSON that can't be parsed
       content = """
       {
         "name": "test"
-      }
+        "devDependencies" {
+          // invalid syntax
+        }
       """
 
       plugin = ~s["daisyui": "^4.12.23"]
       result = TailwindBuilder.patch_package_json(content, plugin, "3.4.17")
 
+      # With the new JSON implementation, this should fallback to string patching
+      # and fail because the content doesn't have the expected structure
       assert result == {:error, :unable_to_patch}
     end
   end

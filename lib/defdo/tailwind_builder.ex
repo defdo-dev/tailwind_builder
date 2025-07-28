@@ -12,14 +12,23 @@ defmodule Defdo.TailwindBuilder do
   """
   require Logger
 
-  @tailwind_latest "3.4.17"
+  @tailwind_latest "4.1.11"
   @available_plugins %{
     "daisyui" => %{
       "version" => ~s["daisyui": "^4.12.23"],
       "statement" => ~s['daisyui': require('daisyui')]
     },
     "daisyui_v5" => %{
-      "version" => ~s["daisyui": "5.0.0"]
+      "version" => ~s["daisyui": "^5.0.49"]
+    }
+  }
+
+  # Supported NPM packages for dynamic version fetching
+  # Only include external plugins (not built-in Tailwind features)
+  @supported_packages %{
+    "daisyui" => %{
+      npm_name: "daisyui",
+      description: "Semantic component classes for Tailwind CSS"
     }
   }
 
@@ -32,7 +41,7 @@ defmodule Defdo.TailwindBuilder do
       downloaded_tar_file = Path.join(tailwind_src, release_package)
       url = "https://github.com/tailwindlabs/#{repo}/archive/refs/tags/v#{release_package}"
 
-      with {:filename, true} <- {:filename, maybe_download(downloaded_tar_file, url)},
+      with {:filename, true} <- {:filename, download_gh_tailwind(downloaded_tar_file, url, tailwind_version)},
            {:untar, :ok} <- {:untar, untar(downloaded_tar_file)},
            {:clean_tmp, :ok} <- {:clean_tmp, File.rm!(downloaded_tar_file)} do
         # Add debug info
@@ -54,15 +63,40 @@ defmodule Defdo.TailwindBuilder do
     end
   end
 
-  defp maybe_download(path, url) do
-    if not File.exists?(path) do
-      content_binary = fetch_body!(url)
-      File.mkdir_p!(Path.dirname(path))
-      File.write!(path, content_binary, [:binary])
-      File.chmod(path, 0o755)
-    end
+  # Known checksums for Tailwind releases (SHA256)
+  @tailwind_checksums %{
+    "3.4.17" => "89c0a7027449cbe564f8722e84108f7bfa0224b5d9289c47cc967ffef8e1b016",
+    "4.0.9" => "7c36fdcdfed4d1b690a56a1267457a8ac9c640ccae2efcaed59f5053d330000a",
+    "4.0.17" => "3590bcb90a75c32ba8b10d692d26838caedbc267a57db23931694abc9598c873",
+    "4.1.11" => "149b7db8417a4a0419ada1d2dc428a11202fc6b971f037b7a8527371c59e0cae"
+    # Future: Add checksums as they become available from official releases
+  }
 
-    File.exists?(path)
+  defp download_gh_tailwind(path, url, version) do
+    if not File.exists?(path) do
+      # Validate URL before downloading
+      if not validate_github_url(url) do
+        Logger.warning("Invalid GitHub URL: #{url}. Only official Tailwind CSS releases are allowed.")
+        false
+      else
+        # Download the file
+        content_binary = fetch_body!(url)
+        File.mkdir_p!(Path.dirname(path))
+        File.write!(path, content_binary, [:binary])
+        File.chmod(path, 0o755)
+
+        # Validate download integrity
+        validate_download_integrity(content_binary, version, url)
+        
+        File.exists?(path)
+      end
+    else
+      File.exists?(path)
+    end
+  end
+
+  defp validate_github_url(url) do
+    String.match?(url, ~r{^https://github\.com/tailwindlabs/tailwindcss/archive/refs/tags/v\d+\.\d+\.\d+\.tar\.gz$})
   end
 
   defp untar(path_tar_file) do
@@ -84,8 +118,9 @@ defmodule Defdo.TailwindBuilder do
   end
 
   defp fetch_body!(url) do
-    url = String.to_charlist(url)
-    Logger.debug("Downloading tailwind from #{url}")
+    url_string = to_string(url)
+    url_charlist = String.to_charlist(url_string)
+    Logger.debug("Downloading from #{url_string}")
 
     {:ok, _} = Application.ensure_all_started(:inets)
     {:ok, _} = Application.ensure_all_started(:ssl)
@@ -119,14 +154,72 @@ defmodule Defdo.TailwindBuilder do
 
     options = [body_format: :binary]
 
-    case :httpc.request(:get, {url, []}, http_options, options) do
+    case :httpc.request(:get, {url_charlist, []}, http_options, options) do
       {:ok, {{_, 200, _}, _headers, body}} ->
         body
 
+      {:ok, {{_, status, _}, _headers, _body}} ->
+        raise "HTTP error #{status} while downloading #{url_string}"
+
+      {:error, reason} ->
+        raise "Network error while downloading #{url_string}: #{inspect(reason)}"
+
       other ->
-        raise "couldn't fetch #{url}: #{inspect(other)}"
+        raise "Unexpected response while downloading #{url_string}: #{inspect(other)}"
     end
   end
+
+  defp validate_download_integrity(body, version, url) do
+    size = byte_size(body)
+    
+    # Basic size sanity check (not for security, just to catch obvious issues)
+    min_size = 100 * 1024  # 100KB
+    max_size = 200 * 1024 * 1024  # 200MB
+    
+    if size < min_size do
+      Logger.warning("Downloaded file seems very small (#{size} bytes) for #{url}")
+    end
+    
+    if size > max_size do
+      Logger.warning("Downloaded file seems very large (#{size} bytes) for #{url}")
+    end
+
+    # Validate checksum if available
+    case validate_checksum(body, version) do
+      :ok ->
+        Logger.debug("Download integrity validated: #{size} bytes, checksum verified for version #{version}")
+        
+      :no_checksum ->
+        Logger.warning("No checksum available for version #{version}. Consider adding to @tailwind_checksums")
+        Logger.debug("Download completed: #{size} bytes for version #{version}")
+        
+      {:error, :checksum_mismatch} ->
+        Logger.error("CHECKSUM MISMATCH for version #{version}! Downloaded file may be corrupted or tampered with.")
+        Logger.error("Expected checksum from @tailwind_checksums, but calculated checksum differs.")
+        # Don't raise - log the issue but continue (user can decide)
+    end
+  end
+
+  defp validate_checksum(body, version) do
+    case Map.get(@tailwind_checksums, version) do
+      nil ->
+        :no_checksum
+        
+      expected_checksum ->
+        actual_checksum = 
+          :crypto.hash(:sha256, body)
+          |> Base.encode16(case: :lower)
+          
+        if actual_checksum == expected_checksum do
+          :ok
+        else
+          Logger.debug("Expected: #{expected_checksum}")
+          Logger.debug("Actual:   #{actual_checksum}")
+          {:error, :checksum_mismatch}
+        end
+    end
+  end
+
 
   defp protocol_versions do
     if otp_version() < 25, do: [:"tlsv1.2"], else: [:"tlsv1.2", :"tlsv1.3"]
@@ -134,6 +227,167 @@ defmodule Defdo.TailwindBuilder do
 
   defp otp_version do
     :erlang.system_info(:otp_release) |> List.to_integer()
+  end
+
+  @doc """
+  Get the latest version of Tailwind CSS from GitHub API
+  """
+  def get_latest_tailwind_version do
+    case fetch_github_latest_release("tailwindlabs", "tailwindcss") do
+      {:ok, version} -> 
+        Logger.info("Latest Tailwind CSS version: #{version}")
+        {:ok, version}
+      {:error, reason} ->
+        Logger.warning("Failed to fetch latest Tailwind version: #{inspect(reason)}")
+        Logger.info("Using default version: #{@tailwind_latest}")
+        {:ok, @tailwind_latest}
+    end
+  end
+
+  @doc """
+  Get the latest version of an NPM package
+  """
+  def get_latest_npm_version(package_name) when is_binary(package_name) do
+    case Map.get(@supported_packages, package_name) do
+      nil ->
+        {:error, :package_not_supported}
+      
+      %{npm_name: npm_name} ->
+        case fetch_npm_latest_version(npm_name) do
+          {:ok, version} ->
+            Logger.info("Latest #{package_name} version: #{version}")
+            {:ok, version}
+          {:error, reason} ->
+            Logger.warning("Failed to fetch latest #{package_name} version: #{inspect(reason)}")
+            {:error, reason}
+        end
+    end
+  end
+
+  @doc """
+  Get all supported packages with their latest versions
+  """
+  def get_supported_packages_info do
+    for {package_name, info} <- @supported_packages do
+      case get_latest_npm_version(package_name) do
+        {:ok, version} ->
+          {package_name, Map.put(info, :latest_version, version)}
+        {:error, _} ->
+          {package_name, Map.put(info, :latest_version, :unknown)}
+      end
+    end
+    |> Enum.into(%{})
+  end
+
+  defp fetch_github_latest_release(owner, repo) do
+    url = "https://api.github.com/repos/#{owner}/#{repo}/releases/latest"
+    
+    case fetch_json_api(url) do
+      {:ok, %{"tag_name" => tag_name}} ->
+        # Remove 'v' prefix if present (e.g., "v3.4.17" -> "3.4.17")
+        version = String.replace_prefix(tag_name, "v", "")
+        {:ok, version}
+      {:error, reason} ->
+        {:error, reason}
+    end
+  end
+
+  defp fetch_npm_latest_version(package_name) do
+    url = "https://registry.npmjs.org/#{package_name}/latest"
+    
+    case fetch_json_api(url) do
+      {:ok, %{"version" => version}} ->
+        {:ok, version}
+      {:error, reason} ->
+        {:error, reason}
+    end
+  end
+
+  defp fetch_json_api(url) do
+    try do
+      case fetch_body!(url) do
+        body when is_binary(body) ->
+          case Jason.decode(body) do
+            {:ok, data} -> {:ok, data}
+            {:error, reason} -> {:error, {:json_decode_error, reason}}
+          end
+        error ->
+          {:error, {:fetch_error, error}}
+      end
+    rescue
+      error ->
+        {:error, {:exception, error}}
+    end
+  end
+
+  @doc """
+  Calculate and suggest checksum for a new Tailwind version
+  This helps maintainers add new versions to @tailwind_checksums
+  """
+  def calculate_tailwind_checksum(version) do
+    url = "https://github.com/tailwindlabs/tailwindcss/archive/refs/tags/v#{version}.tar.gz"
+    
+    if not validate_github_url(url) do
+      {:error, :invalid_url}
+    else
+      try do
+        Logger.info("Downloading Tailwind v#{version} to calculate checksum...")
+        content_binary = fetch_body!(url)
+        checksum = 
+          :crypto.hash(:sha256, content_binary)
+          |> Base.encode16(case: :lower)
+        
+        size = byte_size(content_binary)
+        Logger.info("Calculated checksum for Tailwind v#{version}:")
+        Logger.info("  Size: #{size} bytes")
+        Logger.info("  SHA256: #{checksum}")
+        Logger.info("Add this to @tailwind_checksums:")
+        Logger.info(~s[  "#{version}" => "#{checksum}"])
+        
+        {:ok, %{version: version, checksum: checksum, size: size}}
+      rescue
+        error ->
+          Logger.error("Failed to calculate checksum for v#{version}: #{inspect(error)}")
+          {:error, {:calculation_failed, error}}
+      end
+    end
+  end
+
+  @doc """
+  Update supported packages list dynamically
+  """
+  def add_supported_package(package_name, npm_name, description) when is_binary(package_name) do
+    # This would typically update a configuration file or database
+    # For now, we'll just validate and return what would be added
+    package_info = %{
+      npm_name: npm_name,
+      description: description
+    }
+    
+    case get_latest_npm_version(package_name) do
+      {:ok, version} ->
+        Logger.info("Package #{package_name} (#{npm_name}) validated successfully")
+        Logger.info("Latest version: #{version}")
+        {:ok, Map.put(package_info, :latest_version, version)}
+        
+      {:error, :package_not_supported} ->
+        # Try to fetch directly from NPM to validate it exists
+        case fetch_npm_latest_version(npm_name) do
+          {:ok, version} ->
+            Logger.info("New package #{package_name} (#{npm_name}) found")
+            Logger.info("Latest version: #{version}")
+            Logger.info("Add to @supported_packages:")
+            Logger.info(~s["#{package_name}" => %{npm_name: "#{npm_name}", description: "#{description}"}])
+            {:ok, Map.put(package_info, :latest_version, version)}
+            
+          {:error, reason} ->
+            Logger.error("Package #{npm_name} not found on NPM: #{inspect(reason)}")
+            {:error, :package_not_found}
+        end
+        
+      {:error, reason} ->
+        {:error, reason}
+    end
   end
 
   @doc """
@@ -466,7 +720,7 @@ defmodule Defdo.TailwindBuilder do
   end
 
   @doc """
-  Do the package.json patch
+  Do the package.json patch using JSON parsing for better reliability
   """
   @doc api: :low
   def patch_package_json(content, plugin, tailwind_version) do
@@ -474,21 +728,58 @@ defmodule Defdo.TailwindBuilder do
       Logger.info("It's previously patched, we don't do it again")
       content
     else
-      patch_string_at =
+      patch_package_json_with_json(content, plugin, tailwind_version)
+    end
+  end
+
+  defp patch_package_json_with_json(content, plugin, tailwind_version) do
+    try do
+      # Parse JSON
+      package_json = Jason.decode!(content)
+
+      # Determine dependency section based on version
+      dep_section =
         if Version.compare(tailwind_version, "4.0.0") in [:eq, :gt] do
-          """
-          "dependencies": {
-          """
+          "dependencies"
         else
-          """
-          "devDependencies": {
-          """
+          "devDependencies"
         end
 
-      case patch(content, patch_string_at, plugin, "    ") do
-        {:ok, new_content} -> new_content
-        error -> error
-      end
+      # Parse plugin dependency
+      [plugin_name, plugin_version] = String.split(plugin, ": ", parts: 2)
+      plugin_name = String.trim(plugin_name, "\"")
+      plugin_version = String.trim(plugin_version, "\"")
+
+      # Ensure dependency section exists
+      package_json = Map.put_new(package_json, dep_section, %{})
+
+      # Add plugin to appropriate section
+      updated_deps = Map.put(package_json[dep_section], plugin_name, plugin_version)
+      updated_package_json = Map.put(package_json, dep_section, updated_deps)
+
+      # Convert back to formatted JSON
+      Jason.encode!(updated_package_json, pretty: true)
+    rescue
+      error ->
+        Logger.warning("JSON parsing failed for package.json: #{inspect(error)}")
+        Logger.warning("Falling back to string-based patching")
+
+        # Fallback to original string-based patching
+        patch_string_at =
+          if Version.compare(tailwind_version, "4.0.0") in [:eq, :gt] do
+            """
+            "dependencies": {
+            """
+          else
+            """
+            "devDependencies": {
+            """
+          end
+
+        case patch(content, patch_string_at, plugin, "    ") do
+          {:ok, new_content} -> new_content
+          error -> error
+        end
     end
   end
 
