@@ -25,6 +25,7 @@ defmodule Defdo.TailwindBuilder.MixProject do
     [
       {:castore, ">= 0.0.0"},
       {:mox, "~> 1.0"},
+      {:mock, "~> 0.3", only: :test},
       {:ex_aws, "~> 2.5"},
       {:ex_aws_s3, "~> 2.5"},
       {:hackney, "~> 1.20"},
