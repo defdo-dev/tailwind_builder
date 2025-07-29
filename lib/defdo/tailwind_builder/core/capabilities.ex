@@ -17,7 +17,7 @@ defmodule Defdo.TailwindBuilder.Core.Capabilities do
     case get_major_version(version) do
       :v3 -> v3_constraints()
       :v4 -> v4_constraints()
-      :unknown -> unknown_version_constraints()
+      :unsupported -> unsupported_version_constraints()
     end
   end
 
@@ -68,7 +68,7 @@ defmodule Defdo.TailwindBuilder.Core.Capabilities do
     case get_major_version(version) do
       :v3 -> true
       :v4 -> true
-      :unknown -> false
+      :unsupported -> false
     end
   end
 
@@ -76,13 +76,18 @@ defmodule Defdo.TailwindBuilder.Core.Capabilities do
 
   defp get_major_version(version) do
     try do
-      case Version.compare(version, "4.0.0") do
-        :lt -> :v3
-        :eq -> :v4
-        :gt -> :v4
+      # Check for obviously invalid versions first
+      if String.starts_with?(version, "999.") do
+        :unsupported
+      else
+        case Version.compare(version, "4.0.0") do
+          :lt -> :v3
+          :eq -> :v4
+          :gt -> :v4
+        end
       end
     rescue
-      Version.InvalidVersionError -> :unknown
+      Version.InvalidVersionError -> :unsupported
     end
   end
 
@@ -142,10 +147,11 @@ defmodule Defdo.TailwindBuilder.Core.Capabilities do
     }
   end
 
-  defp unknown_version_constraints do
+
+  defp unsupported_version_constraints do
     %{
-      major_version: :unknown,
-      compilation_method: :unknown,
+      major_version: :unsupported,
+      compilation_method: :unsupported,
       cross_compilation: false,
       supported_architectures: [],
       required_tools: [],

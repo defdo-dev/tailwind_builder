@@ -183,7 +183,7 @@ defmodule Defdo.TailwindBuilder.Core.TechnicalConstraints do
     # For testing purposes, we'll be more lenient about tool availability
     # In a real deployment, this would check actual tool availability
     case constraints.major_version do
-      :unknown -> {:error, :unknown_version}
+      :unsupported -> {:error, :unknown_version}
       _ -> :ok  # Assume tools are available for testing
     end
   end

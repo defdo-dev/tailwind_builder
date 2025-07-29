@@ -180,4 +180,87 @@ defmodule Defdo.TailwindBuilder.Core do
       }
     }
   end
+
+  @doc """
+  Get architecture support matrix for all supported architectures
+  """
+  def get_architecture_support_matrix do
+    %{
+      :"linux-x64" => %{
+        supported_versions: ["3.4.17", "4.0.9", "4.1.11"],
+        compilation_method: :npm,
+        cross_compilation_available: true
+      },
+      :"linux-arm64" => %{
+        supported_versions: ["3.4.17", "4.0.9", "4.1.11"],
+        compilation_method: :npm,
+        cross_compilation_available: true
+      },
+      :"darwin-x64" => %{
+        supported_versions: ["3.4.17", "4.0.9", "4.1.11"],
+        compilation_method: :npm,
+        cross_compilation_available: true
+      },
+      :"darwin-arm64" => %{
+        supported_versions: ["3.4.17", "4.0.9", "4.1.11"],
+        compilation_method: :npm,
+        cross_compilation_available: true
+      },
+      :"win32-x64" => %{
+        supported_versions: ["3.4.17"],
+        compilation_method: :npm,
+        cross_compilation_available: true
+      },
+      :"freebsd-x64" => %{
+        supported_versions: ["3.4.17"],
+        compilation_method: :npm,
+        cross_compilation_available: true
+      }
+    }
+  end
+
+  @doc """
+  Analyze extracted Tailwind CSS structure and validate it
+  """
+  def analyze_extracted_structure(extraction_path, version) do
+    constraints = get_version_constraints(version)
+    
+    case constraints.major_version do
+      :v3 ->
+        standalone_path = Path.join(extraction_path, "standalone-cli")
+        package_json_path = Path.join(standalone_path, "package.json")
+        
+        %{
+          version: version,
+          major_version: :v3,
+          valid_structure: File.exists?(standalone_path) && File.exists?(package_json_path),
+          standalone_path: standalone_path,
+          package_json_exists: File.exists?(package_json_path),
+          structure_type: "standalone-cli"
+        }
+        
+      :v4 ->
+        packages_path = Path.join([extraction_path, "packages", "@tailwindcss-standalone"])
+        package_json_path = Path.join(packages_path, "package.json")
+        
+        %{
+          version: version,
+          major_version: :v4,
+          valid_structure: File.exists?(packages_path) && File.exists?(package_json_path),
+          standalone_path: packages_path,
+          package_json_exists: File.exists?(package_json_path),
+          structure_type: "packages/@tailwindcss-standalone"
+        }
+        
+      _ ->
+        %{
+          version: version,
+          major_version: constraints.major_version,
+          valid_structure: false,
+          standalone_path: nil,
+          package_json_exists: false,
+          structure_type: "unsupported"
+        }
+    end
+  end
 end
