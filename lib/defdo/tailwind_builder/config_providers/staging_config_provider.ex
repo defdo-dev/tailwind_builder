@@ -363,4 +363,33 @@ defmodule Defdo.TailwindBuilder.ConfigProviders.StagingConfigProvider do
       rate_limit_notifications: true
     }
   end
+
+  @doc """
+  Get staging telemetry configuration
+  """
+  def get_telemetry_config do
+    %{
+      enabled: true,
+      level: :info,
+      backends: [:console, :prometheus],
+      sample_rate: 0.5,  # Sample 50% in staging
+      trace_retention_hours: 24,  # 1 day retention
+      detailed_logging: true,
+      performance_monitoring: true,
+      error_tracking: :development,
+      alert_on_errors: true,
+      alert_on_high_latency: false,  # Less strict than production
+      metrics_collection: %{
+        system_metrics: true,
+        business_metrics: true,
+        performance_metrics: true,
+        feature_flag_metrics: true
+      },
+      testing_integration: %{
+        load_testing_metrics: true,
+        performance_testing_metrics: true,
+        user_acceptance_metrics: true
+      }
+    }
+  end
 end

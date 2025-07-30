@@ -1,22 +1,31 @@
 defmodule Defdo.TailwindBuilder.Downloader do
   @moduledoc """
-  Módulo especializado en descarga y extracción de archivos.
+  Specialized module for downloading and extracting files with comprehensive telemetry.
   
-  Responsabilidades:
-  - Descargar archivos desde URLs
-  - Validar integridad con checksums
-  - Extraer archivos tar.gz
-  - Validación de URLs y seguridad de descarga
+  Responsibilities:
+  - Download files from URLs with telemetry tracking
+  - Validate integrity with checksums
+  - Extract tar.gz files
+  - URL validation and download security
+  - Performance monitoring and error tracking
   
-  Siguiendo el principio Unix: "hacer una cosa y hacerla bien"
+  Following Unix principle: "do one thing and do it well"
   """
   
   require Logger
+  alias Defdo.TailwindBuilder.{Telemetry, Metrics}
 
   @doc """
-  Descarga y extrae un archivo de Tailwind CSS desde GitHub
+  Download and extract a Tailwind CSS file from GitHub with telemetry tracking
   """
   def download_and_extract(opts \\ []) do
+    # Use telemetry wrapper for comprehensive tracking
+    Telemetry.track_download(opts[:version] || "unknown", fn ->
+      do_download_and_extract(opts)
+    end)
+  end
+
+  defp do_download_and_extract(opts) do
     opts = Keyword.validate!(opts, [
       :version,
       :destination,
@@ -28,30 +37,50 @@ defmodule Defdo.TailwindBuilder.Downloader do
     version = opts[:version] || raise ArgumentError, "version is required"
     destination = opts[:destination] || File.cwd!()
     
-    # Construir URL si no se proporciona
+    # Build URL if not provided
     url = opts[:url] || build_github_url(version)
     
-    # Validar URL si se requiere (por defecto true)
+    # Track download start
+    start_time = System.monotonic_time()
+    Telemetry.track_event(:download, :start, %{version: version, url: url, destination: destination})
+    
+    # Validate URL if required (default true)
     validate_url = Keyword.get(opts, :validate_url, true)
     
-    with {:validate_url, :ok} <- {:validate_url, maybe_validate_url(url, validate_url)},
-         {:download, {:ok, content}} <- {:download, download_content(url)},
-         {:validate_checksum, :ok} <- {:validate_checksum, maybe_validate_checksum(content, version, opts[:expected_checksum])},
-         {:save, {:ok, tar_path}} <- {:save, save_content(content, destination, version)},
-         {:extract, :ok} <- {:extract, extract_tar(tar_path)},
+    with {:validate_url, :ok} <- {:validate_url, maybe_validate_url_with_telemetry(url, validate_url)},
+         {:download, {:ok, content}} <- {:download, download_content_with_telemetry(url, version)},
+         {:validate_checksum, :ok} <- {:validate_checksum, maybe_validate_checksum_with_telemetry(content, version, opts[:expected_checksum])},
+         {:save, {:ok, tar_path}} <- {:save, save_content_with_telemetry(content, destination, version)},
+         {:extract, :ok} <- {:extract, extract_tar_with_telemetry(tar_path)},
          {:cleanup, :ok} <- {:cleanup, cleanup_tar(tar_path)} do
+      
+      end_time = System.monotonic_time()
+      duration_ms = System.convert_time_unit(end_time - start_time, :native, :millisecond)
       
       result = %{
         version: version,
         destination: destination,
         extracted_path: Path.join(destination, "tailwindcss-#{version}"),
         url: url,
-        size: byte_size(content)
+        size: byte_size(content),
+        duration_ms: duration_ms
       }
+      
+      # Record comprehensive metrics
+      Metrics.record_download_metrics(version, byte_size(content), duration_ms, :success)
+      Telemetry.track_event(:download, :success, %{version: version, size: byte_size(content), duration_ms: duration_ms})
       
       {:ok, result}
     else
       {step, error} ->
+        end_time = System.monotonic_time()
+        duration_ms = System.convert_time_unit(end_time - start_time, :native, :millisecond)
+        
+        # Record error metrics
+        Metrics.record_error_metrics(:download, step, error)
+        Metrics.record_download_metrics(version, 0, duration_ms, :error)
+        Telemetry.track_event(:download, :error, %{version: version, step: step, error: inspect(error), duration_ms: duration_ms})
+        
         Logger.error("Download failed at step #{step}: #{inspect(error)}")
         {:error, {step, error}}
     end
@@ -156,6 +185,138 @@ defmodule Defdo.TailwindBuilder.Downloader do
 
   defp maybe_validate_url(url, true), do: validate_github_url(url)
   defp maybe_validate_url(_url, false), do: :ok
+
+  # Telemetry-enhanced versions of internal functions
+  
+  defp maybe_validate_url_with_telemetry(url, validate_flag) do
+    Telemetry.track_event(:download, :url_validation_start, %{url: url, validate: validate_flag})
+    
+    result = maybe_validate_url(url, validate_flag)
+    
+    case result do
+      :ok -> 
+        Telemetry.track_event(:download, :url_validation_success, %{url: url})
+      error -> 
+        Telemetry.track_event(:download, :url_validation_error, %{url: url, error: inspect(error)})
+    end
+    
+    result
+  end
+
+  defp download_content_with_telemetry(url, version) do
+    start_time = System.monotonic_time()
+    Telemetry.track_event(:download, :http_request_start, %{url: url, version: version})
+    
+    result = download_content(url)
+    
+    end_time = System.monotonic_time()
+    duration_ms = System.convert_time_unit(end_time - start_time, :native, :millisecond)
+    
+    case result do
+      {:ok, content} ->
+        size_bytes = byte_size(content)
+        Telemetry.track_event(:download, :http_request_success, %{
+          url: url, 
+          version: version, 
+          size_bytes: size_bytes, 
+          duration_ms: duration_ms
+        })
+        Metrics.record_cache_metrics(:download, url, :miss)  # Assume cache miss for HTTP requests
+      
+      error ->
+        Telemetry.track_event(:download, :http_request_error, %{
+          url: url, 
+          version: version, 
+          error: inspect(error), 
+          duration_ms: duration_ms
+        })
+    end
+    
+    result
+  end
+
+  defp maybe_validate_checksum_with_telemetry(content, version, expected_checksum) do
+    start_time = System.monotonic_time()
+    Telemetry.track_event(:download, :checksum_validation_start, %{version: version, has_expected: expected_checksum != nil})
+    
+    result = maybe_validate_checksum(content, version, expected_checksum)
+    
+    end_time = System.monotonic_time()
+    duration_ms = System.convert_time_unit(end_time - start_time, :native, :millisecond)
+    
+    case result do
+      :ok -> 
+        Telemetry.track_event(:download, :checksum_validation_success, %{version: version, duration_ms: duration_ms})
+      error -> 
+        Telemetry.track_event(:download, :checksum_validation_error, %{version: version, error: inspect(error), duration_ms: duration_ms})
+    end
+    
+    result
+  end
+
+  defp save_content_with_telemetry(content, destination, version) do
+    start_time = System.monotonic_time()
+    size_bytes = byte_size(content)
+    Telemetry.track_event(:download, :file_save_start, %{destination: destination, version: version, size_bytes: size_bytes})
+    
+    result = save_content(content, destination, version)
+    
+    end_time = System.monotonic_time()
+    duration_ms = System.convert_time_unit(end_time - start_time, :native, :millisecond)
+    
+    case result do
+      {:ok, tar_path} ->
+        Telemetry.track_event(:download, :file_save_success, %{
+          tar_path: tar_path, 
+          version: version, 
+          size_bytes: size_bytes, 
+          duration_ms: duration_ms
+        })
+      
+      error ->
+        Telemetry.track_event(:download, :file_save_error, %{
+          destination: destination, 
+          version: version, 
+          error: inspect(error), 
+          duration_ms: duration_ms
+        })
+    end
+    
+    result
+  end
+
+  defp extract_tar_with_telemetry(tar_path) do
+    start_time = System.monotonic_time()
+    file_size = case File.stat(tar_path) do
+      {:ok, %{size: size}} -> size
+      _ -> 0
+    end
+    
+    Telemetry.track_event(:download, :extraction_start, %{tar_path: tar_path, file_size: file_size})
+    
+    result = extract_tar(tar_path)
+    
+    end_time = System.monotonic_time()
+    duration_ms = System.convert_time_unit(end_time - start_time, :native, :millisecond)
+    
+    case result do
+      :ok ->
+        Telemetry.track_event(:download, :extraction_success, %{
+          tar_path: tar_path, 
+          file_size: file_size, 
+          duration_ms: duration_ms
+        })
+      
+      error ->
+        Telemetry.track_event(:download, :extraction_error, %{
+          tar_path: tar_path, 
+          error: inspect(error), 
+          duration_ms: duration_ms
+        })
+    end
+    
+    result
+  end
 
   defp maybe_validate_checksum(content, version, nil) do
     # Sin checksum esperado, solo log warning

@@ -1,23 +1,42 @@
 defmodule Defdo.TailwindBuilder.Deployer do
   @moduledoc """
-  Specialized module for distributing compiled binaries.
+  Specialized module for distributing compiled binaries with comprehensive telemetry.
   
   Responsibilities:
-  - Upload binaries to different destinations (S3, R2, etc.)
+  - Upload binaries to different destinations (S3, R2, etc.) with performance tracking
   - Validate binaries before distribution
   - Handle version metadata
   - Generate distribution manifests
+  - Monitor deployment performance and success rates
   
   Does not handle compilation or download, only final distribution.
   """
   
   require Logger
-  alias Defdo.TailwindBuilder.Core
+  alias Defdo.TailwindBuilder.{Core, Telemetry}
 
   @doc """
-  Distributes compiled binaries to a destination
+  Deploy compiled binaries to a destination with comprehensive telemetry tracking
   """
   def deploy(opts \\ []) do
+    # Use telemetry wrapper for comprehensive tracking
+    target = determine_target_from_opts(opts)
+    
+    Telemetry.track_deploy(target, fn ->
+      do_deploy(opts)
+    end)
+  end
+
+  # Helper function to determine deployment target from options
+  defp determine_target_from_opts(opts) do
+    cond do
+      opts[:bucket] -> :cloud  # S3 or R2 based on bucket
+      opts[:destination] && String.starts_with?(opts[:destination], "/") -> :local
+      true -> :unknown
+    end
+  end
+
+  defp do_deploy(opts) do
     opts = Keyword.validate!(opts, [
       :version,
       :source_path,

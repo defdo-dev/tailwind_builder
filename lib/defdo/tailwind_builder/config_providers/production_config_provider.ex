@@ -325,4 +325,33 @@ defmodule Defdo.TailwindBuilder.ConfigProviders.ProductionConfigProvider do
       backup_verification: true
     }
   end
+
+  @doc """
+  Get production telemetry configuration
+  """
+  def get_telemetry_config do
+    %{
+      enabled: true,
+      level: :info,
+      backends: [:console, :prometheus, :datadog],
+      sample_rate: 0.1,  # Sample 10% in production for performance
+      trace_retention_hours: 72,  # 3 days retention
+      detailed_logging: false,
+      performance_monitoring: true,
+      error_tracking: :sentry,
+      alert_on_errors: true,
+      alert_on_high_latency: true,
+      metrics_collection: %{
+        system_metrics: true,
+        business_metrics: true,
+        performance_metrics: true,
+        sla_metrics: true
+      },
+      dashboards: %{
+        operations_dashboard: true,
+        error_dashboard: true,
+        performance_dashboard: true
+      }
+    }
+  end
 end

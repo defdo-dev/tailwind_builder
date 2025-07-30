@@ -257,6 +257,27 @@ defmodule Defdo.TailwindBuilder.ConfigProviders.DevelopmentConfigProvider do
   end
 
   @doc """
+  Get development telemetry configuration
+  """
+  def get_telemetry_config do
+    %{
+      enabled: true,
+      level: :debug,
+      backends: [:console],
+      sample_rate: 1.0,  # Sample all events in development
+      trace_retention_hours: 2,  # Short retention for development
+      detailed_logging: true,
+      performance_monitoring: true,
+      error_tracking: :local,
+      metrics_collection: %{
+        system_metrics: true,
+        business_metrics: true,
+        performance_metrics: true
+      }
+    }
+  end
+
+  @doc """
   Check if running in development mode
   """
   def development_mode? do

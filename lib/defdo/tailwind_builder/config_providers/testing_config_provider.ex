@@ -325,4 +325,34 @@ defmodule Defdo.TailwindBuilder.ConfigProviders.TestingConfigProvider do
       jobs -> String.to_integer(jobs)
     end
   end
+
+  @doc """
+  Get testing telemetry configuration
+  """
+  def get_telemetry_config do
+    %{
+      enabled: true,
+      level: :warning,  # Minimal logging in tests
+      backends: [:console],
+      sample_rate: 1.0,  # Sample all for test verification
+      trace_retention_hours: 1,  # Very short retention
+      detailed_logging: false,
+      performance_monitoring: false,  # Disabled for test speed
+      error_tracking: :test,
+      alert_on_errors: false,
+      alert_on_high_latency: false,
+      metrics_collection: %{
+        system_metrics: false,
+        business_metrics: false,
+        performance_metrics: true,  # For performance regression testing
+        test_metrics: true
+      },
+      test_integration: %{
+        capture_test_metrics: true,
+        track_test_duration: true,
+        track_assertion_counts: true,
+        memory_leak_detection: true
+      }
+    }
+  end
 end

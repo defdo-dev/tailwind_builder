@@ -197,15 +197,20 @@ defmodule Defdo.TailwindBuilder do
         
         {:ok, result}
       
-      {:error, {_step, error}} ->
+      {:error, {step, error}} ->
         case error do
           {:missing_tools, tools} ->
             {:error, "Ensure that `#{Enum.join(tools, "`, `")}` is installed."}
-          {step, {message, code}} ->
-            Logger.error(inspect(message))
-            {:error, "There is an error detected during the step #{step}. with exit code: #{code}, check logs to detect issues."}
+          {:command_failed, code, output} ->
+            Logger.error("Command failed at step #{inspect(step)} with exit code #{code}")
+            Logger.error("Output: #{String.slice(output, 0, 1000)}")
+            {:error, "Build failed at step #{inspect(step)} with exit code #{code}. Check logs for details."}
+          {message, code} when is_integer(code) ->
+            Logger.error("Step #{inspect(step)} failed: #{inspect(message)}")
+            {:error, "There is an error detected during the step #{inspect(step)}. with exit code: #{code}, check logs to detect issues."}
           other ->
-            {:error, inspect(other)}
+            Logger.error("Build failed with error: #{inspect(other)}")
+            {:error, "Build failed: #{inspect(other)}"}
         end
     end
   end
