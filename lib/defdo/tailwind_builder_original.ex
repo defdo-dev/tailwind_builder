@@ -12,14 +12,14 @@ defmodule Defdo.TailwindBuilderOriginal do
   """
   require Logger
 
-  @tailwind_latest "4.1.11"
+  @tailwind_latest "4.1.13"
   @available_plugins %{
     "daisyui" => %{
       "version" => ~s["daisyui": "^4.12.23"],
       "statement" => ~s['daisyui': require('daisyui')]
     },
     "daisyui_v5" => %{
-      "version" => ~s["daisyui": "^5.0.49"]
+      "version" => ~s["daisyui": "^5.1.10"]
     }
   }
 
@@ -87,7 +87,7 @@ defmodule Defdo.TailwindBuilderOriginal do
 
         # Validate download integrity
         validate_download_integrity(content_binary, version, url)
-        
+
         File.exists?(path)
       end
     else
@@ -171,15 +171,15 @@ defmodule Defdo.TailwindBuilderOriginal do
 
   defp validate_download_integrity(body, version, url) do
     size = byte_size(body)
-    
+
     # Basic size sanity check (not for security, just to catch obvious issues)
     min_size = 100 * 1024  # 100KB
     max_size = 200 * 1024 * 1024  # 200MB
-    
+
     if size < min_size do
       Logger.warning("Downloaded file seems very small (#{size} bytes) for #{url}")
     end
-    
+
     if size > max_size do
       Logger.warning("Downloaded file seems very large (#{size} bytes) for #{url}")
     end
@@ -188,11 +188,11 @@ defmodule Defdo.TailwindBuilderOriginal do
     case validate_checksum(body, version) do
       :ok ->
         Logger.debug("Download integrity validated: #{size} bytes, checksum verified for version #{version}")
-        
+
       :no_checksum ->
         Logger.warning("No checksum available for version #{version}. Consider adding to @tailwind_checksums")
         Logger.debug("Download completed: #{size} bytes for version #{version}")
-        
+
       {:error, :checksum_mismatch} ->
         Logger.error("CHECKSUM MISMATCH for version #{version}! Downloaded file may be corrupted or tampered with.")
         Logger.error("Expected checksum from @tailwind_checksums, but calculated checksum differs.")
@@ -204,12 +204,12 @@ defmodule Defdo.TailwindBuilderOriginal do
     case Map.get(@tailwind_checksums, version) do
       nil ->
         :no_checksum
-        
+
       expected_checksum ->
-        actual_checksum = 
+        actual_checksum =
           :crypto.hash(:sha256, body)
           |> Base.encode16(case: :lower)
-          
+
         if actual_checksum == expected_checksum do
           :ok
         else
@@ -234,7 +234,7 @@ defmodule Defdo.TailwindBuilderOriginal do
   """
   def get_latest_tailwind_version do
     case fetch_github_latest_release("tailwindlabs", "tailwindcss") do
-      {:ok, version} -> 
+      {:ok, version} ->
         Logger.info("Latest Tailwind CSS version: #{version}")
         {:ok, version}
       {:error, reason} ->
@@ -251,7 +251,7 @@ defmodule Defdo.TailwindBuilderOriginal do
     case Map.get(@supported_packages, package_name) do
       nil ->
         {:error, :package_not_supported}
-      
+
       %{npm_name: npm_name} ->
         case fetch_npm_latest_version(npm_name) do
           {:ok, version} ->
@@ -281,7 +281,7 @@ defmodule Defdo.TailwindBuilderOriginal do
 
   defp fetch_github_latest_release(owner, repo) do
     url = "https://api.github.com/repos/#{owner}/#{repo}/releases/latest"
-    
+
     case fetch_json_api(url) do
       {:ok, %{"tag_name" => tag_name}} ->
         # Remove 'v' prefix if present (e.g., "v3.4.17" -> "3.4.17")
@@ -294,7 +294,7 @@ defmodule Defdo.TailwindBuilderOriginal do
 
   defp fetch_npm_latest_version(package_name) do
     url = "https://registry.npmjs.org/#{package_name}/latest"
-    
+
     case fetch_json_api(url) do
       {:ok, %{"version" => version}} ->
         {:ok, version}
@@ -326,24 +326,24 @@ defmodule Defdo.TailwindBuilderOriginal do
   """
   def calculate_tailwind_checksum(version) do
     url = "https://github.com/tailwindlabs/tailwindcss/archive/refs/tags/v#{version}.tar.gz"
-    
+
     if not validate_github_url(url) do
       {:error, :invalid_url}
     else
       try do
         Logger.info("Downloading Tailwind v#{version} to calculate checksum...")
         content_binary = fetch_body!(url)
-        checksum = 
+        checksum =
           :crypto.hash(:sha256, content_binary)
           |> Base.encode16(case: :lower)
-        
+
         size = byte_size(content_binary)
         Logger.info("Calculated checksum for Tailwind v#{version}:")
         Logger.info("  Size: #{size} bytes")
         Logger.info("  SHA256: #{checksum}")
         Logger.info("Add this to @tailwind_checksums:")
         Logger.info(~s[  "#{version}" => "#{checksum}"])
-        
+
         {:ok, %{version: version, checksum: checksum, size: size}}
       rescue
         error ->
@@ -363,13 +363,13 @@ defmodule Defdo.TailwindBuilderOriginal do
       npm_name: npm_name,
       description: description
     }
-    
+
     case get_latest_npm_version(package_name) do
       {:ok, version} ->
         Logger.info("Package #{package_name} (#{npm_name}) validated successfully")
         Logger.info("Latest version: #{version}")
         {:ok, Map.put(package_info, :latest_version, version)}
-        
+
       {:error, :package_not_supported} ->
         # Try to fetch directly from NPM to validate it exists
         case fetch_npm_latest_version(npm_name) do
@@ -379,12 +379,12 @@ defmodule Defdo.TailwindBuilderOriginal do
             Logger.info("Add to @supported_packages:")
             Logger.info(~s["#{package_name}" => %{npm_name: "#{npm_name}", description: "#{description}"}])
             {:ok, Map.put(package_info, :latest_version, version)}
-            
+
           {:error, reason} ->
             Logger.error("Package #{npm_name} not found on NPM: #{inspect(reason)}")
             {:error, :package_not_found}
         end
-        
+
       {:error, reason} ->
         {:error, reason}
     end

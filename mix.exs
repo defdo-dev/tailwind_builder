@@ -26,11 +26,9 @@ defmodule Defdo.TailwindBuilder.MixProject do
       {:castore, ">= 0.0.0"},
       {:mox, "~> 1.0"},
       {:mock, "~> 0.3", only: :test},
-      {:ex_aws, "~> 2.5"},
-      {:ex_aws_s3, "~> 2.5"},
-      {:hackney, "~> 1.20"},
-      {:jason, "~> 1.4"},
-      {:sweet_xml, "~> 0.7.4"}
+      {:req, "~> 0.5.15"},
+      {:req_s3, "~> 0.2.3"},
+      {:jason, "~> 1.4"}
     ]
   end
 

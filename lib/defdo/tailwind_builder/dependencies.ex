@@ -1,7 +1,7 @@
 defmodule Defdo.TailwindBuilder.Dependencies do
   @moduledoc """
   Manages build dependencies for TailwindBuilder
-  
+
   This module handles:
   - Basic tools installation (Node.js, Rust, npm, pnpm)
   - Rust target management for TailwindCSS v4.x
@@ -29,9 +29,10 @@ defmodule Defdo.TailwindBuilder.Dependencies do
 
         You can install them manually:
         - Rust (for cargo): curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
-        - Node.js (for npm): brew install node
+        - Node.js (for npm):
+          Ubuntu: curl -fsSL https://deb.nodesource.com/setup_lts.x | sudo -E bash - && sudo apt-get install -y nodejs
+          macOS: brew install node
         - pnpm: npm install -g pnpm
-
         Or run: mix tailwind.install_deps
         """
     end
@@ -43,7 +44,7 @@ defmodule Defdo.TailwindBuilder.Dependencies do
   def check_version_dependencies!(version) do
     # First check basic tools
     check!()
-    
+
     # Then check version-specific requirements
     case check_rust_targets_for_version(version) do
       {:ok, _} -> :ok
@@ -94,6 +95,7 @@ defmodule Defdo.TailwindBuilder.Dependencies do
           into: IO.stream()
         )
 
+        # For other systems, try direct Node.js installation
         System.cmd("curl", ["-o", "node.pkg", "https://nodejs.org/dist/latest/node-latest.pkg"],
           into: IO.stream()
         )
@@ -113,11 +115,11 @@ defmodule Defdo.TailwindBuilder.Dependencies do
   """
   def install_rust_targets! do
     Logger.info("Installing required Rust targets...")
-    
+
     for target <- @required_rust_targets do
       install_rust_target!(target)
     end
-    
+
     :ok
   end
 
@@ -126,11 +128,11 @@ defmodule Defdo.TailwindBuilder.Dependencies do
   """
   def install_missing_rust_targets!(missing_targets) when is_list(missing_targets) do
     Logger.info("Installing missing Rust targets: #{inspect(missing_targets)}")
-    
+
     for target <- missing_targets do
       install_rust_target!(target)
     end
-    
+
     :ok
   end
 
@@ -139,7 +141,7 @@ defmodule Defdo.TailwindBuilder.Dependencies do
   """
   def install_rust_target!(target) do
     Logger.info("Installing Rust target: #{target}")
-    
+
     case System.cmd("rustup", ["target", "add", target]) do
       {output, 0} ->
         Logger.info("Successfully installed Rust target #{target}: #{String.trim(output)}")
@@ -198,11 +200,11 @@ defmodule Defdo.TailwindBuilder.Dependencies do
   def check_rust_targets_for_version(version) do
     required_targets = Map.get(@tailwind_v4_requirements, version, [])
     installed_targets = get_installed_rust_targets()
-    
+
     missing_targets = Enum.reject(required_targets, fn target ->
       target in installed_targets
     end)
-    
+
     case missing_targets do
       [] -> {:ok, required_targets}
       missing -> {:error, missing}
@@ -235,10 +237,10 @@ defmodule Defdo.TailwindBuilder.Dependencies do
       {:error, missing_targets} ->
         raise """
         Missing required Rust targets for TailwindCSS #{version}: #{Enum.join(missing_targets, ", ")}
-        
+
         Install them with:
         #{Enum.map(missing_targets, fn target -> "rustup target add #{target}" end) |> Enum.join("\n")}
-        
+
         Or run: Defdo.TailwindBuilder.Dependencies.install_missing_rust_targets!(#{inspect(missing_targets)})
         """
     end
