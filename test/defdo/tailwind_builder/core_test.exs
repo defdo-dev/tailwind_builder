@@ -14,8 +14,8 @@ defmodule Defdo.TailwindBuilder.CoreTest do
 
     test "returns correct compilation method by version" do
       assert Core.get_compilation_method("3.4.17") == :npm
-      assert Core.get_compilation_method("4.1.11") == :cargo  # Updated: v4 uses Cargo
-      assert Core.get_compilation_method("5.0.0") == :cargo   # Future versions also use Cargo
+      assert Core.get_compilation_method("4.1.11") == :pnpm_workspace  # Updated: v4 uses pnpm workspace + Rust
+      assert Core.get_compilation_method("5.0.0") == :cargo   # Future versions use pure Cargo
     end
 
     test "returns required tools by version" do
@@ -24,6 +24,8 @@ defmodule Defdo.TailwindBuilder.CoreTest do
       assert "node" in v3_tools
 
       v4_tools = Core.get_required_tools("4.1.11")
+      assert "pnpm" in v4_tools   # Updated: v4 requires pnpm
+      assert "node" in v4_tools   # Updated: v4 requires Node.js
       assert "cargo" in v4_tools  # Updated: v4 requires Cargo
       assert "rustc" in v4_tools  # Updated: v4 requires Rust
     end
@@ -103,7 +105,7 @@ defmodule Defdo.TailwindBuilder.CoreTest do
     test "v3 and v4 have different compilation methods" do
       assert Core.get_compilation_method("3.4.17") != Core.get_compilation_method("4.1.11")
       assert Core.get_compilation_method("3.4.17") == :npm
-      assert Core.get_compilation_method("4.1.11") == :cargo
+      assert Core.get_compilation_method("4.1.11") == :pnpm_workspace
     end
 
     test "v3 and v4 both support cross-compilation" do

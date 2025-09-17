@@ -11,7 +11,7 @@ defmodule Defdo.TailwindBuilder.V4BuildTest do
       # Test that v4 constraints are properly defined
       constraints = Core.get_version_constraints("4.1.11")
       assert constraints.major_version == :v4
-      assert constraints.compilation_method == :cargo
+      assert constraints.compilation_method == :pnpm_workspace
       assert constraints.cross_compilation == true
       assert is_list(constraints.supported_architectures)
       assert length(constraints.supported_architectures) > 10
@@ -35,6 +35,8 @@ defmodule Defdo.TailwindBuilder.V4BuildTest do
 
     test "v4 required tools" do
       tools = Core.get_required_tools("4.1.11")
+      assert "pnpm" in tools
+      assert "node" in tools
       assert "cargo" in tools
       assert "rustc" in tools
     end
@@ -43,12 +45,14 @@ defmodule Defdo.TailwindBuilder.V4BuildTest do
       constraints = Core.get_version_constraints("4.1.11")
       build_commands = constraints.file_structure.build_commands
 
-      assert "cargo build --release" in build_commands
+      # v4 uses pnpm workspace commands, not cargo directly
+      assert "pnpm install --ignore-scripts --filter=!./playgrounds/*" in build_commands
+      assert "pnpm run --filter ./crates/node build:platform" in build_commands
     end
 
     test "compilation method detection" do
       assert Core.get_compilation_method("3.4.17") == :npm
-      assert Core.get_compilation_method("4.1.11") == :cargo
+      assert Core.get_compilation_method("4.1.11") == :pnpm_workspace
       assert Core.get_compilation_method("5.0.0") == :cargo  # Future v5
     end
 
