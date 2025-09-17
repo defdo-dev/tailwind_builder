@@ -150,7 +150,7 @@ defmodule Defdo.TailwindBuilder.DashboardTest do
       temp_file = "/tmp/test_dashboard_#{:rand.uniform(10000)}.json"
       
       try do
-        assert :ok = Dashboard.export_dashboard(temp_file, :json)
+        assert :ok = Dashboard.export_dashboard(temp_file, :json, silent: true)
         assert File.exists?(temp_file)
         
         # Verify content is valid JSON
@@ -165,7 +165,7 @@ defmodule Defdo.TailwindBuilder.DashboardTest do
       temp_file = "/tmp/test_dashboard_#{:rand.uniform(10000)}.txt"
       
       try do
-        assert :ok = Dashboard.export_dashboard(temp_file, :text)
+        assert :ok = Dashboard.export_dashboard(temp_file, :text, silent: true)
         assert File.exists?(temp_file)
         
         # Verify content contains expected text
@@ -179,7 +179,7 @@ defmodule Defdo.TailwindBuilder.DashboardTest do
     test "handles export errors gracefully" do
       invalid_path = "/invalid/path/dashboard.json"
       
-      assert {:error, _reason} = Dashboard.export_dashboard(invalid_path, :json)
+      assert {:error, _reason} = Dashboard.export_dashboard(invalid_path, :json, silent: true)
     end
   end
 

@@ -26,7 +26,9 @@ defmodule Mix.Tasks.Tailwind.InstallDepsTest do
       with_mock Defdo.TailwindBuilder.Dependencies, [:passthrough],
         install!: fn -> raise RuntimeError, error_message end do
         assert_raise RuntimeError, error_message, fn ->
-          InstallDeps.run([])
+          capture_io(fn ->
+            InstallDeps.run([])
+          end)
         end
 
         assert called(Defdo.TailwindBuilder.Dependencies.install!())

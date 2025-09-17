@@ -1,7 +1,7 @@
 defmodule Defdo.TailwindBuilder.Core.ArchitectureMatrix do
   @moduledoc """
   Architecture compatibility matrix for Tailwind CSS compilation.
-  
+
   Defines which architectures can be compiled for each Tailwind version,
   considering technical limitations of the underlying compilation toolchain.
   """
@@ -25,7 +25,7 @@ defmodule Defdo.TailwindBuilder.Core.ArchitectureMatrix do
   """
   def get_version_compatibility(version) when is_binary(version) do
     constraints = Capabilities.get_version_constraints(version)
-    
+
     %{
       version: version,
       compilation_method: constraints.compilation_method,
@@ -39,7 +39,8 @@ defmodule Defdo.TailwindBuilder.Core.ArchitectureMatrix do
   @doc """
   Check if we can compile for a target architecture from current host
   """
-  def can_compile_for_target?(version, target_architecture) when is_binary(version) and is_binary(target_architecture) do
+  def can_compile_for_target?(version, target_architecture)
+      when is_binary(version) and is_binary(target_architecture) do
     compatibility = get_version_compatibility(version)
     target_architecture in compatibility.can_compile_for
   end
@@ -57,21 +58,24 @@ defmodule Defdo.TailwindBuilder.Core.ArchitectureMatrix do
   """
   def get_host_architecture do
     arch = :erlang.system_info(:system_architecture) |> to_string()
-    os = case :os.type() do
-      {:unix, :darwin} -> "darwin"
-      {:unix, :linux} -> "linux"
-      {:unix, :freebsd} -> "freebsd"
-      {:win32, _} -> "win32"
-      _ -> "unknown"
-    end
-    
-    cpu = cond do
-      arch =~ "x86_64" or arch =~ "amd64" -> "x64"
-      arch =~ "aarch64" or arch =~ "arm64" -> "arm64"
-      arch =~ "arm" -> "arm"
-      true -> "unknown"
-    end
-    
+
+    os =
+      case :os.type() do
+        {:unix, :darwin} -> "darwin"
+        {:unix, :linux} -> "linux"
+        {:unix, :freebsd} -> "freebsd"
+        {:win32, _} -> "win32"
+        _ -> "unknown"
+      end
+
+    cpu =
+      cond do
+        arch =~ "x86_64" or arch =~ "amd64" -> "x64"
+        arch =~ "aarch64" or arch =~ "arm64" -> "arm64"
+        arch =~ "arm" -> "arm"
+        true -> "unknown"
+      end
+
     "#{os}-#{cpu}"
   end
 
@@ -81,7 +85,7 @@ defmodule Defdo.TailwindBuilder.Core.ArchitectureMatrix do
   def get_compilation_details(version) when is_binary(version) do
     constraints = Capabilities.get_version_constraints(version)
     host_arch = get_host_architecture()
-    
+
     %{
       version: version,
       host_architecture: host_arch,
@@ -107,12 +111,29 @@ defmodule Defdo.TailwindBuilder.Core.ArchitectureMatrix do
     case constraints.compilation_method do
       :npm ->
         []
+
+      :cargo ->
+        [
+          "Full cross-compilation support via Rust targets",
+          "Requires Rust toolchain for compilation",
+          "Native binary output"
+        ]
+
+      :pnpm_workspace ->
+        [
+          "Full cross-compilation support via pnpm workspace + Rust targets",
+          "Requires Node.js, pnpm, and Rust toolchain",
+          "Uses pnpm workspace filtering for builds",
+          "Native binary output"
+        ]
+
       :rust ->
         [
           "No cross-compilation support",
           "Can only compile for host architecture",
           "Requires Rust toolchain on target system"
         ]
+
       :unknown ->
         ["Unknown compilation method", "No support guaranteed"]
     end
@@ -126,12 +147,28 @@ defmodule Defdo.TailwindBuilder.Core.ArchitectureMatrix do
           ci_cd: "Use single build agent to generate all architecture binaries",
           distribution: "Upload all binaries from single compilation run"
         }
+
+      :cargo ->
+        %{
+          single_host: "Cross-compile for all targets using Cargo",
+          ci_cd: "Use single build agent with Rust cross-compilation",
+          distribution: "Upload all binaries from single Cargo build"
+        }
+
+      :pnpm_workspace ->
+        %{
+          single_host: "Cross-compile for all targets using pnpm workspace + Rust",
+          ci_cd: "Use single build agent with Node.js, pnpm, and Rust toolchain",
+          distribution: "Upload all binaries from pnpm workspace build"
+        }
+
       :rust ->
         %{
           single_host: "Can only compile for #{host_arch}",
           ci_cd: "Requires separate build agents for each target architecture",
           distribution: "Collect binaries from multiple compilation hosts"
         }
+
       :unknown ->
         %{
           single_host: "Unknown workflow requirements",
@@ -140,4 +177,34 @@ defmodule Defdo.TailwindBuilder.Core.ArchitectureMatrix do
         }
     end
   end
+
+  def valid_targets do
+    MapSet.new(~w(
+      x86_64-pc-windows-msvc
+      aarch64-pc-windows-msvc
+      x86_64-apple-darwin
+      aarch64-apple-darwin
+      aarch64-linux-android
+      armv7-linux-androideabi
+      x86_64-unknown-linux-gnu
+      aarch64-unknown-linux-gnu
+      armv7-unknown-linux-gnueabihf
+      aarch64-unknown-linux-musl
+      x86_64-unknown-linux-musl
+      x86_64-unknown-freebsd
+    ))
+  end
+
+  @doc """
+  Convierte un string a átomo de target **solo si está permitido**.
+  """
+  def to_target_atom(target) when is_binary(target) do
+    if MapSet.member?(valid_targets(), target) do
+      String.to_atom(target)
+    else
+      :invalid_target
+    end
+  end
+
+  def to_target_atom(target) when is_atom(target), do: target
 end

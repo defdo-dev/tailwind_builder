@@ -1,10 +1,10 @@
 defmodule Defdo.TailwindBuilder.Core.TechnicalConstraints do
   @moduledoc """
   Pure technical constraints without business logic.
-  
+
   This module separates technical facts (what the system can/cannot do)
   from business policies (what the system should/should not do).
-  
+
   Technical constraints are immutable facts about the compilation toolchain.
   Business policies are configurable rules that may change over time.
   """
@@ -43,7 +43,7 @@ defmodule Defdo.TailwindBuilder.Core.TechnicalConstraints do
   def get_technical_limitations(version) when is_binary(version) do
     constraints = Capabilities.get_version_constraints(version)
     arch_info = ArchitectureMatrix.get_compilation_details(version)
-    
+
     %{
       version: version,
       compilation_limitations: arch_info.limitations,
@@ -91,18 +91,20 @@ defmodule Defdo.TailwindBuilder.Core.TechnicalConstraints do
     constraints = Capabilities.get_version_constraints(version)
     required_tools = constraints.required_tools
     optional_tools = constraints.optional_tools
-    
+
     manager in required_tools or manager in optional_tools
   end
 
   defp can_run_on_architecture?(version, arch) when is_binary(version) and is_binary(arch) do
     supported = Capabilities.get_supported_architectures(version)
-    arch in supported or supported == [:host_only]
+    # Convert arch to atom for comparison if it's a string
+    arch_atom = if is_binary(arch), do: String.to_atom(arch), else: arch
+    arch_atom in supported
   end
 
   defp get_compilation_requirements(version) do
     constraints = Capabilities.get_version_constraints(version)
-    
+
     %{
       required_tools: constraints.required_tools,
       optional_tools: constraints.optional_tools,
@@ -114,7 +116,7 @@ defmodule Defdo.TailwindBuilder.Core.TechnicalConstraints do
 
   defp get_cross_compilation_requirements(version, target_arch) do
     base_requirements = get_compilation_requirements(version)
-    
+
     case can_cross_compile?(version, target_arch) do
       true ->
         Map.put(base_requirements, :cross_compilation, %{
@@ -133,7 +135,7 @@ defmodule Defdo.TailwindBuilder.Core.TechnicalConstraints do
 
   defp get_plugin_requirements(version, plugin) when is_binary(version) and is_binary(plugin) do
     constraints = Capabilities.get_version_constraints(version)
-    
+
     %{
       dependency_section: constraints.plugin_system.dependency_section,
       requires_bundling: constraints.plugin_system.requires_bundling,
@@ -144,7 +146,7 @@ defmodule Defdo.TailwindBuilder.Core.TechnicalConstraints do
 
   defp get_config_format_constraints(version) do
     constraints = Capabilities.get_version_constraints(version)
-    
+
     case constraints.major_version do
       :v3 ->
         %{
@@ -179,7 +181,7 @@ defmodule Defdo.TailwindBuilder.Core.TechnicalConstraints do
 
   defp validate_toolchain_availability(version) when is_binary(version) do
     constraints = Capabilities.get_version_constraints(version)
-    
+
     # For testing purposes, we'll be more lenient about tool availability
     # In a real deployment, this would check actual tool availability
     case constraints.major_version do
@@ -190,7 +192,7 @@ defmodule Defdo.TailwindBuilder.Core.TechnicalConstraints do
 
   defp validate_plugin_compatibility(version, plugins) when is_binary(version) and is_list(plugins) do
     constraints = Capabilities.get_version_constraints(version)
-    
+
     case constraints.plugin_system do
       %{} when map_size(constraints.plugin_system) == 0 ->
         {:error, :plugin_system_not_available}

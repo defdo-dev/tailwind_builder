@@ -141,15 +141,20 @@ defmodule Defdo.TailwindBuilder.Dashboard do
   @doc """
   Export dashboard data to file
   """
-  def export_dashboard(filename, format \\ :json) do
+  def export_dashboard(filename, format \\ :json, opts \\ []) do
     summary = generate_summary(format: format)
-    
+    silent = Keyword.get(opts, :silent, false)
+
     case File.write(filename, summary) do
-      :ok -> 
-        IO.puts("Dashboard exported to #{filename}")
+      :ok ->
+        unless silent do
+          IO.puts("Dashboard exported to #{filename}")
+        end
         :ok
-      {:error, reason} -> 
-        IO.puts("Failed to export dashboard: #{reason}")
+      {:error, reason} ->
+        unless silent do
+          IO.puts("Failed to export dashboard: #{reason}")
+        end
         {:error, reason}
     end
   end

@@ -26,7 +26,9 @@ defmodule Mix.Tasks.Tailwind.UninstallDepsTest do
       with_mock Defdo.TailwindBuilder.Dependencies, [:passthrough],
         uninstall!: fn -> raise RuntimeError, error_message end do
         assert_raise RuntimeError, error_message, fn ->
-          UninstallDeps.run([])
+          capture_io(fn ->
+            UninstallDeps.run([])
+          end)
         end
 
         assert called(Defdo.TailwindBuilder.Dependencies.uninstall!())

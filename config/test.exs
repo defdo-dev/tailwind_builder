@@ -4,7 +4,7 @@ import Config
 # This file is loaded after config.exs
 
 # Configure logger to only show warnings and errors in test
-config :logger, level: :warn
+config :logger, level: :warning
 
 # Configure Req for testing with shorter timeouts
 config :req,

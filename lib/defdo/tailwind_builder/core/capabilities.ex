@@ -1,13 +1,14 @@
 defmodule Defdo.TailwindBuilder.Core.Capabilities do
   @moduledoc """
   Core technical capabilities and constraints for different Tailwind CSS versions.
-  
-  This module defines the technical limitations and compilation capabilities 
+
+  This module defines the technical limitations and compilation capabilities
   for each major Tailwind version without business logic or configuration.
-  
+
   Technical Facts:
   - Tailwind v3: npm-based compilation, supports cross-compilation for all architectures
-  - Tailwind v4: Rust-based compilation, no cross-compilation support (host-only)
+  - Tailwind v4: Rust/Cargo-based compilation with full cross-compilation support
+  - Tailwind v5+: Future-proofed architecture detection
   """
 
   @doc """
@@ -17,6 +18,8 @@ defmodule Defdo.TailwindBuilder.Core.Capabilities do
     case get_major_version(version) do
       :v3 -> v3_constraints()
       :v4 -> v4_constraints()
+      :v5 -> v5_constraints()
+      :v6 -> v6_constraints()
       :unsupported -> unsupported_version_constraints()
     end
   end
@@ -68,6 +71,8 @@ defmodule Defdo.TailwindBuilder.Core.Capabilities do
     case get_major_version(version) do
       :v3 -> true
       :v4 -> true
+      :v5 -> false  # Future version - not yet in production
+      :v6 -> false  # Future version - not yet in production
       :unsupported -> false
     end
   end
@@ -80,10 +85,26 @@ defmodule Defdo.TailwindBuilder.Core.Capabilities do
       if String.starts_with?(version, "999.") do
         :unsupported
       else
-        case Version.compare(version, "4.0.0") do
-          :lt -> :v3
-          :eq -> :v4
-          :gt -> :v4
+        case version do
+          # Parse major version number more precisely
+          "3" <> _ -> :v3
+          "4" <> _ -> :v4
+          "5" <> _ -> :v5  # Future v5 support
+          "6" <> _ -> :v6  # Future v6 support
+          _ ->
+            # Fallback to semantic comparison for more complex version strings
+            case Version.compare(version, "4.0.0") do
+              :lt -> :v3
+              _ ->
+                case Version.compare(version, "5.0.0") do
+                  :lt -> :v4
+                  _ ->
+                    case Version.compare(version, "6.0.0") do
+                      :lt -> :v5
+                      _ -> :v6  # Assume v6+ uses similar pattern to v4-v5
+                    end
+                end
+            end
         end
       end
     rescue
@@ -124,29 +145,153 @@ defmodule Defdo.TailwindBuilder.Core.Capabilities do
   defp v4_constraints do
     %{
       major_version: :v4,
-      compilation_method: :rust,
-      cross_compilation: false,
-      supported_architectures: [:host_only],
-      required_tools: ["pnpm", "node"],
-      optional_tools: ["npm", "yarn"],
+      compilation_method: :pnpm_workspace,
+      cross_compilation: true,
+      supported_architectures: [
+        :"x86_64-unknown-linux-gnu",
+        :"x86_64-unknown-linux-musl",
+        :"aarch64-unknown-linux-gnu",
+        :"aarch64-unknown-linux-musl",
+        :"armv7-unknown-linux-gnueabihf",
+        :"armv7-unknown-linux-musleabihf",
+        :"x86_64-pc-windows-msvc",
+        :"aarch64-pc-windows-msvc",
+        :"x86_64-apple-darwin",
+        :"aarch64-apple-darwin",
+        :"x86_64-unknown-freebsd",
+        :"aarch64-linux-android",
+        :"armv7-linux-androideabi"
+      ],
+      required_tools: ["pnpm", "node", "cargo", "rustc"],
+      optional_tools: ["strip"],
       runtime_constraints: %{
-        node_version: ">= 18.0.0",
+        node_version: ">= 20.0.0",
         pnpm_version: ">= 8.0.0",
-        rust_toolchain: "stable"
+        rust_version: ">= 1.70.0"
       },
       file_structure: %{
-        base_path: "packages/@tailwindcss-standalone",
-        config_files: ["package.json", "src/index.ts"],
-        build_commands: ["pnpm install --no-frozen-lockfile", "pnpm run build"]
+        base_path: ".",
+        config_files: ["package.json", "pnpm-workspace.yaml", "Cargo.toml"],
+        build_commands: [
+          "pnpm install --ignore-scripts --filter=!./playgrounds/*",
+          "pnpm run --filter ./crates/node build:platform"
+        ]
       },
       plugin_system: %{
         dependency_section: "dependencies",
         requires_bundling: true,
-        supports_dynamic_import: true
+        supports_dynamic_import: true,
+        plugin_integration: "package_json"
+      },
+      binary_output: %{
+        target_dir: "packages/@tailwindcss-standalone/dist",
+        binary_name: "tailwindcss-macos-arm64",
+        strip_symbols: true,
+        generate_checksums: true
       }
     }
   end
 
+  defp v5_constraints do
+    # Future v5 - assume similar to v4 but with potential improvements
+    %{
+      major_version: :v5,
+      compilation_method: :cargo,
+      cross_compilation: true,
+      supported_architectures: [
+        :"x86_64-unknown-linux-gnu",
+        :"x86_64-unknown-linux-musl",
+        :"aarch64-unknown-linux-gnu",
+        :"aarch64-unknown-linux-musl",
+        :"armv7-unknown-linux-gnueabihf",
+        :"armv7-unknown-linux-musleabihf",
+        :"x86_64-pc-windows-msvc",
+        :"aarch64-pc-windows-msvc",
+        :"x86_64-apple-darwin",
+        :"aarch64-apple-darwin",
+        :"x86_64-unknown-freebsd",
+        :"aarch64-linux-android",
+        :"armv7-linux-androideabi",
+        # Potential new architectures in v5
+        :"riscv64gc-unknown-linux-gnu",
+        :"wasm32-unknown-unknown"
+      ],
+      required_tools: ["cargo", "rustc"],
+      optional_tools: ["node", "pnpm", "strip"],
+      runtime_constraints: %{
+        rust_version: ">= 1.75.0",  # Potentially newer Rust requirement
+        cargo_version: ">= 1.75.0"
+      },
+      file_structure: %{
+        base_path: ".",
+        config_files: ["Cargo.toml", "Cargo.lock"],
+        build_commands: ["cargo build --release"]
+      },
+      plugin_system: %{
+        dependency_section: "dependencies",
+        requires_bundling: false,
+        supports_dynamic_import: false,
+        plugin_integration: "rust_crate"
+      },
+      binary_output: %{
+        target_dir: "target/release",
+        binary_name: "tailwindcss",
+        strip_symbols: true,
+        generate_checksums: true
+      }
+    }
+  end
+
+  defp v6_constraints do
+    # Future v6 - assume continued Rust evolution with enhanced features
+    %{
+      major_version: :v6,
+      compilation_method: :cargo,
+      cross_compilation: true,
+      supported_architectures: [
+        :"x86_64-unknown-linux-gnu",
+        :"x86_64-unknown-linux-musl",
+        :"aarch64-unknown-linux-gnu",
+        :"aarch64-unknown-linux-musl",
+        :"armv7-unknown-linux-gnueabihf",
+        :"armv7-unknown-linux-musleabihf",
+        :"x86_64-pc-windows-msvc",
+        :"aarch64-pc-windows-msvc",
+        :"x86_64-apple-darwin",
+        :"aarch64-apple-darwin",
+        :"x86_64-unknown-freebsd",
+        :"aarch64-linux-android",
+        :"armv7-linux-androideabi",
+        :"riscv64gc-unknown-linux-gnu",
+        :"wasm32-unknown-unknown",
+        # Potential newer architectures
+        :"loongarch64-unknown-linux-gnu"
+      ],
+      required_tools: ["cargo", "rustc"],
+      optional_tools: ["node", "pnpm", "strip"],
+      runtime_constraints: %{
+        rust_version: ">= 1.80.0",  # Future Rust requirement
+        cargo_version: ">= 1.80.0"
+      },
+      file_structure: %{
+        base_path: ".",
+        config_files: ["Cargo.toml", "Cargo.lock"],
+        build_commands: ["cargo build --release"]
+      },
+      plugin_system: %{
+        dependency_section: "dependencies",
+        requires_bundling: false,
+        supports_dynamic_import: false,
+        plugin_integration: "rust_crate"
+      },
+      binary_output: %{
+        target_dir: "target/release",
+        binary_name: "tailwindcss",
+        strip_symbols: true,
+        generate_checksums: true
+      }
+    }
+  end
 
   defp unsupported_version_constraints do
     %{

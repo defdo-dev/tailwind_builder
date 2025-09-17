@@ -233,7 +233,7 @@ defmodule Defdo.TailwindBuilder do
     ]) do
       {:ok, deploy_result} ->
         Logger.info("Deployment successful: #{deploy_result.binaries_deployed} files deployed")
-        # Maintain the same result as the original API: list of ExAws responses
+        # Maintain the same result as the original API: list of upload responses
         # Extract upload_result from each {:ok, metadata} tuple to maintain compatibility
         Enum.map(deploy_result.deployed_files, fn
           {:ok, metadata} -> metadata.upload_result
