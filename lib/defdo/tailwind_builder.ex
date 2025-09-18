@@ -36,8 +36,8 @@ defmodule Defdo.TailwindBuilder do
       "statement" => ~s['daisyui': require('daisyui')]
     },
     "daisyui_v5" => %{
-      "version" => ~s["daisyui": "^5.1.10"],
-      "statement" => ~s['daisyui': require('daisyui')]
+      "version" => ~s["daisyui": "^5.1.13"]
+      # No "statement" for v4.x - uses index.ts patching with ES modules instead
     }
   }
 

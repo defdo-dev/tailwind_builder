@@ -47,9 +47,11 @@ defmodule Defdo.TailwindBuilder.Dependencies do
 
     # Then check version-specific requirements
     case check_rust_targets_for_version(version) do
-      {:ok, _} -> :ok
+      {:ok, _} ->
+        :ok
       {:error, missing_targets} ->
         install_missing_rust_targets!(missing_targets)
+        :ok
     end
   end
 
@@ -116,11 +118,15 @@ defmodule Defdo.TailwindBuilder.Dependencies do
   def install_rust_targets! do
     Logger.info("Installing required Rust targets...")
 
-    for target <- @required_rust_targets do
+    results = for target <- @required_rust_targets do
       install_rust_target!(target)
     end
 
-    :ok
+    # Check if any installation failed
+    case Enum.find(results, fn result -> match?({:error, _}, result) end) do
+      nil -> :ok
+      {:error, reason} -> raise "Failed to install Rust targets: #{inspect(reason)}"
+    end
   end
 
   @doc """
@@ -129,11 +135,15 @@ defmodule Defdo.TailwindBuilder.Dependencies do
   def install_missing_rust_targets!(missing_targets) when is_list(missing_targets) do
     Logger.info("Installing missing Rust targets: #{inspect(missing_targets)}")
 
-    for target <- missing_targets do
+    results = for target <- missing_targets do
       install_rust_target!(target)
     end
 
-    :ok
+    # Check if any installation failed
+    case Enum.find(results, fn result -> match?({:error, _}, result) end) do
+      nil -> :ok
+      {:error, reason} -> raise "Failed to install Rust targets: #{inspect(reason)}"
+    end
   end
 
   @doc """

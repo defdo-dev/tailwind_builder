@@ -48,10 +48,8 @@ if not File.exists?(path) do
   IO.puts("Download complete: #{inspect(download_result)}")
   
   # Define DaisyUI v5 plugin configuration
-  daisyui_v5 = %{
-    "version" => ~s["daisyui": "^5.1.12"]
-  }
-  
+  daisyui_v5 = %{"version" => ~s["daisyui": "^5.1.13"]}
+    
   IO.puts("Adding DaisyUI v5 plugin...")
   patch_result = Defdo.TailwindBuilder.add_plugin(daisyui_v5, tailwind_version, tmp_dir)
   IO.puts("Plugin added: #{inspect(patch_result)}")
@@ -81,11 +79,16 @@ account_id = System.get_env("LB_R2_AWS_ACCOUNT_ID") ||
   raise "Missing R2_AWS_ACCOUNT_ID environment variable"
 
 # Configure ExAws to work with Cloudflare R2
-Application.put_env(:ex_aws, :access_key_id, access_key)
-Application.put_env(:ex_aws, :secret_access_key, secret_access_key)
-Application.put_env(:ex_aws, :region, "auto")
-Application.put_env(:ex_aws, :json_codec, Jason)
-Application.put_env(:ex_aws, :s3, host: "#{account_id}.r2.cloudflarestorage.com")
+Application.put_env(:tailwind_builder, :aws, [
+  access_key_id: access_key,
+  secret_access_key: secret_access_key,
+  host: "#{account_id}.r2.cloudflarestorage.com",
+  region: "auto"
+])
+# Application.put_env(:ex_aws, :secret_access_key, secret_access_key)
+# Application.put_env(:ex_aws, :region, "auto")
+# Application.put_env(:ex_aws, :json_codec, Jason)
+# Application.put_env(:ex_aws, :s3, host: "#{account_id}.r2.cloudflarestorage.com")
 
 # Enable debug during development (comment out in production)
 # Application.put_env(:ex_aws, :debug_requests, true)
@@ -107,4 +110,4 @@ IO.puts("Files deployed: #{length(deploy_result)}")
 IO.puts("========================")
 ```
 
-<!-- livebook:{"offset":3380,"stamp":{"token":"XCP.Ua1U5O5eYIO-XYlQ2V9Emb5oLo2lqIe6zH-Rx6rkiD4fBlDs5iQu0KLBoo_zWcSBKvsWL6FLTMRASvLlOmfxBQ-EB_R8tGc5ySEzUZ_7oFmQdBrPXIZlr8RG1B2UPmz8QARpM2DZjvLAp-lydCpol-txa7j0eZ9V0c9ZJV3qo8cxIyM3gZk2r56rx_7-Aq7mytU","version":2}} -->
+<!-- livebook:{"offset":3511,"stamp":{"token":"XCP.J5S8Iek3QVUX07wfK7mmT2a62xBoLXFIXsJ5iIxIxW8UaaIXBvDxixwVdPnGc60tt_oVUf066rY4kWV2ppopEh8homwAPX63Ch184eHfbpTfA8cjEBmqEuqMAEOi2I9yy85wsi_y1q3bVD4jK1nzy0wHr1qK-h1whwSY404zehIYJc2t_urHczuRWgJJahFYxnw","version":2}} -->

@@ -30,22 +30,24 @@ defmodule Defdo.TailwindBuilder.Deployer do
   # Helper function to determine deployment target from options
   defp determine_target_from_opts(opts) do
     cond do
-      opts[:bucket] -> :cloud  # S3 or R2 based on bucket
+      # S3 or R2 based on bucket
+      opts[:bucket] -> :cloud
       opts[:destination] && String.starts_with?(opts[:destination], "/") -> :local
       true -> :unknown
     end
   end
 
   defp do_deploy(opts) do
-    opts = Keyword.validate!(opts, [
-      :version,
-      :source_path,
-      :destination,
-      :bucket,
-      :prefix,
-      :validate_binaries,
-      :generate_manifest
-    ])
+    opts =
+      Keyword.validate!(opts, [
+        :version,
+        :source_path,
+        :destination,
+        :bucket,
+        :prefix,
+        :validate_binaries,
+        :generate_manifest
+      ])
 
     version = opts[:version] || raise ArgumentError, "version is required"
     source_path = opts[:source_path] || raise ArgumentError, "source_path is required"
@@ -53,11 +55,13 @@ defmodule Defdo.TailwindBuilder.Deployer do
     validate_binaries = Keyword.get(opts, :validate_binaries, true)
     generate_manifest = Keyword.get(opts, :generate_manifest, true)
 
-    with {:find_binaries, {:ok, binaries}} <- {:find_binaries, find_distributable_binaries(source_path, version)},
+    with {:find_binaries, {:ok, binaries}} <-
+           {:find_binaries, find_distributable_binaries(source_path, version)},
          {:validate, :ok} <- {:validate, maybe_validate_binaries(binaries, validate_binaries)},
-         {:deploy_binaries, {:ok, deployed}} <- {:deploy_binaries, deploy_binaries(binaries, destination, opts)},
-         {:manifest, {:ok, manifest}} <- {:manifest, maybe_generate_manifest(deployed, version, generate_manifest)} do
-
+         {:deploy_binaries, {:ok, deployed}} <-
+           {:deploy_binaries, deploy_binaries(binaries, destination, opts)},
+         {:manifest, {:ok, manifest}} <-
+           {:manifest, maybe_generate_manifest(deployed, version, generate_manifest)} do
       result = %{
         version: version,
         destination: destination,
@@ -91,7 +95,8 @@ defmodule Defdo.TailwindBuilder.Deployer do
           {:error, {:dist_directory_not_found, dist_path}}
         end
 
-      error -> error
+      error ->
+        error
     end
   end
 
@@ -101,10 +106,11 @@ defmodule Defdo.TailwindBuilder.Deployer do
   def validate_binaries(binaries) when is_list(binaries) do
     validation_results = Enum.map(binaries, &validate_single_binary/1)
 
-    failed_validations = Enum.filter(validation_results, fn
-      {:error, _} -> true
-      _ -> false
-    end)
+    failed_validations =
+      Enum.filter(validation_results, fn
+        {:error, _} -> true
+        _ -> false
+      end)
 
     case failed_validations do
       [] -> :ok
@@ -123,15 +129,17 @@ defmodule Defdo.TailwindBuilder.Deployer do
     if version == nil do
       {:error, :version_required}
     else
-      upload_results = Enum.map(binaries, fn binary ->
-        deploy_single_binary_to_r2(binary, bucket, prefix, version)
-      end)
+      upload_results =
+        Enum.map(binaries, fn binary ->
+          deploy_single_binary_to_r2(binary, bucket, prefix, version)
+        end)
 
       # Check if there were errors
-      failures = Enum.filter(upload_results, fn
-        {:error, _} -> true
-        _ -> false
-      end)
+      failures =
+        Enum.filter(upload_results, fn
+          {:error, _} -> true
+          _ -> false
+        end)
 
       case failures do
         [] -> {:ok, upload_results}
@@ -193,7 +201,9 @@ defmodule Defdo.TailwindBuilder.Deployer do
         # Verificar si tiene permisos de ejecución
         import Bitwise
         (mode &&& 0o111) != 0
-      _ -> false
+
+      _ ->
+        false
     end
   end
 
@@ -205,6 +215,7 @@ defmodule Defdo.TailwindBuilder.Deployer do
   defp maybe_generate_manifest(deployed_files, version, true) do
     generate_deployment_manifest(deployed_files, version)
   end
+
   defp maybe_generate_manifest(_deployed_files, _version, false), do: {:ok, nil}
 
   defp get_dist_directory(source_path, version) do
@@ -214,7 +225,15 @@ defmodule Defdo.TailwindBuilder.Deployer do
         {:ok, dist_path}
 
       %{major_version: :v4} ->
-        dist_path = Path.join([source_path, "tailwindcss-#{version}", "packages", "@tailwindcss-standalone", "dist"])
+        dist_path =
+          Path.join([
+            source_path,
+            "tailwindcss-#{version}",
+            "packages",
+            "@tailwindcss-standalone",
+            "dist"
+          ])
+
         {:ok, dist_path}
 
       _ ->
@@ -224,10 +243,12 @@ defmodule Defdo.TailwindBuilder.Deployer do
 
   defp validate_single_binary(binary_info) do
     cond do
-      binary_info.size < 10 ->  # Menos de 10 bytes parece muy pequeño (se permiten archivos de test)
+      # Menos de 10 bytes parece muy pequeño (se permiten archivos de test)
+      binary_info.size < 10 ->
         {:error, {:file_too_small, binary_info.filename}}
 
-      binary_info.size > 500_000_000 ->  # Más de 500MB parece muy grande (TailwindCSS v4.x puede ser más grande)
+      # Más de 500MB parece muy grande (TailwindCSS v4.x puede ser más grande)
+      binary_info.size > 500_000_000 ->
         {:error, {:file_too_large, binary_info.filename}}
 
       true ->
@@ -240,7 +261,8 @@ defmodule Defdo.TailwindBuilder.Deployer do
   end
 
   defp deploy_binaries(binaries, :s3, opts) do
-    deploy_to_r2(binaries, opts)  # Same implementation
+    # Same implementation
+    deploy_to_r2(binaries, opts)
   end
 
   defp deploy_binaries(_binaries, destination, _opts) do
@@ -261,12 +283,16 @@ defmodule Defdo.TailwindBuilder.Deployer do
       region = Application.get_env(:tailwind_builder, :aws)[:region] || "auto"
 
       # Create Req client with S3 plugin
-      req = Req.new(base_url: "https://#{host}")
-      |> ReqS3.attach(
-        access_key_id: access_key_id,
-        secret_access_key: secret_access_key,
-        region: region
-      )
+      req =
+        Req.new(base_url: "https://#{host}")
+        |> ReqS3.attach(
+          aws_sigv4: [
+            access_key_id: access_key_id,
+            secret_access_key: secret_access_key,
+            region: region,
+            service: "s3"
+          ]
+        )
 
       # Read file and upload using the s3 operation
       file_content = File.read!(binary_info.path)
@@ -276,13 +302,14 @@ defmodule Defdo.TailwindBuilder.Deployer do
       if result.status in 200..299 do
         Logger.info("Successfully uploaded #{filename}")
 
-        {:ok, %{
-          local_path: binary_info.path,
-          remote_key: object_key,
-          bucket: bucket,
-          size: binary_info.size,
-          upload_result: %{status: result.status, headers: result.headers}
-        }}
+        {:ok,
+         %{
+           local_path: binary_info.path,
+           remote_key: object_key,
+           bucket: bucket,
+           size: binary_info.size,
+           upload_result: %{status: result.status, headers: result.headers}
+         }}
       else
         raise "Upload failed with status #{result.status}"
       end
@@ -325,10 +352,12 @@ defmodule Defdo.TailwindBuilder.Deployer do
   end
 
   # Handle raw binary info maps (for direct usage from tests/external calls)
-  defp format_file_info(%{filename: filename, size: size} = binary_info) when is_map(binary_info) do
+  defp format_file_info(%{filename: filename, size: size} = binary_info)
+       when is_map(binary_info) do
     %{
       filename: filename,
-      remote_key: nil,  # Not deployed yet
+      # Not deployed yet
+      remote_key: nil,
       size_bytes: size,
       size_mb: Float.round(size / (1024 * 1024), 2),
       architecture: extract_architecture_from_filename(filename),

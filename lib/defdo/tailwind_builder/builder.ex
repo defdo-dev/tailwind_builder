@@ -83,7 +83,8 @@ defmodule Defdo.TailwindBuilder.Builder do
 
     with {:validate_tools, :ok} <- {:validate_tools, maybe_validate_tools_with_telemetry(version, validate_tools)},
          {:validate_paths, {:ok, paths}} <- {:validate_paths, validate_and_get_paths_with_telemetry(source_path, version)},
-         {:compile, :ok} <- {:compile, execute_compilation_with_telemetry(version, paths, debug, target_arch)} do
+         {:compile, compilation_result} <- {:compile, execute_compilation_with_telemetry(version, paths, debug, target_arch)} do
+      Logger.debug("Compilation result: #{inspect(compilation_result)}")
 
       end_time = System.monotonic_time()
       duration_ms = System.convert_time_unit(end_time - start_time, :native, :millisecond)
@@ -379,15 +380,16 @@ defmodule Defdo.TailwindBuilder.Builder do
     duration_ms = System.convert_time_unit(end_time - start_time, :native, :millisecond)
 
     case result do
-      :ok ->
+      {:ok, _} = success ->
         Telemetry.track_event(:build, :compilation_success, %{
           version: version,
           compilation_method: compilation_method,
           duration_ms: duration_ms,
           debug: debug
         })
+        success
 
-      error ->
+      {:error, _} = error ->
         Telemetry.track_event(:build, :compilation_error, %{
           version: version,
           compilation_method: compilation_method,
@@ -395,9 +397,8 @@ defmodule Defdo.TailwindBuilder.Builder do
           duration_ms: duration_ms,
           debug: debug
         })
+        error
     end
-
-    result
   end
 
   # Utility functions for telemetry
@@ -516,10 +517,13 @@ defmodule Defdo.TailwindBuilder.Builder do
       {"pnpm oxide build", "pnpm", ["run", "--filter", "./crates/node", "build:platform"], paths.tailwind_root}
     end
 
-    # Build the entire workspace
+    # Build the entire workspace first
     workspace_build_step = {"pnpm workspace build", "pnpm", ["run", "build"], paths.tailwind_root}
 
-    steps = [install_step, oxide_build_step, workspace_build_step]
+    # Build standalone binaries using the official script
+    standalone_build_step = {"bun standalone build", "bun", ["run", "build"], Path.join(paths.tailwind_root, "packages/@tailwindcss-standalone")}
+
+    steps = [install_step, oxide_build_step, workspace_build_step, standalone_build_step]
 
     execute_compilation_steps(steps, debug, version)
   end
@@ -566,7 +570,7 @@ defmodule Defdo.TailwindBuilder.Builder do
     # Get build context if available
     build_context = Process.get(:build_telemetry_context, %{})
 
-    Enum.reduce_while(steps, :ok, fn {step_name, command, args, working_dir}, _acc ->
+    result = Enum.reduce_while(steps, :ok, fn {step_name, command, args, working_dir}, _acc ->
       Logger.info("Starting step: #{step_name}")
 
       # Emit telemetry event for step start with build context
@@ -607,6 +611,12 @@ defmodule Defdo.TailwindBuilder.Builder do
           {:halt, {:error, {String.to_atom(step_name), reason}}}
       end
     end)
+
+    # Convert :ok to {:ok, result} for consistency
+    case result do
+      :ok -> {:ok, %{status: :compilation_completed, steps_completed: length(steps)}}
+      {:error, reason} -> {:error, reason}
+    end
   end
 
   defp get_v3_paths(source_path, version) do
@@ -630,5 +640,4 @@ defmodule Defdo.TailwindBuilder.Builder do
       dist_path: Path.join(standalone_root, "dist")
     }}
   end
-
 end
