@@ -403,7 +403,12 @@ defmodule Defdo.TailwindBuilder.PluginManager do
   defp patch_tw_load(content, plugin_name) do
     patch_string_at = ~s[    return require('@tailwindcss/aspect-ratio')]
 
-    patch_text = ~s[\n  } else if (/(\\/)?#{plugin_name}(\\/.+)?$/.test(id)) {\n    return require('#{plugin_name}')]
+    # Special handling for daisyui to support daisyui/theme
+    patch_text = if plugin_name == "daisyui" do
+      ~s[\n  } else if (id.endsWith('daisyui/theme')) {\n    return require('daisyui/theme')\n  } else if (/(\\/)?daisyui(\\/(?!theme).+)?$/.test(id)) {\n    return require('daisyui')]
+    else
+      ~s[\n  } else if (/(\\/)?#{plugin_name}(\\/.+)?$/.test(id)) {\n    return require('#{plugin_name}')]
+    end
 
     case patch_content(content, patch_string_at, patch_text, "", false, :after) do
       {:ok, new_content} -> new_content
@@ -416,7 +421,12 @@ defmodule Defdo.TailwindBuilder.PluginManager do
       'tailwindcss/defaultTheme.js': await import('tailwindcss/defaultTheme'),
     """
 
-    patch_text = ~s[      '#{plugin_name}': await import('#{plugin_name}'),]
+    # Special handling for daisyui to support daisyui/theme
+    patch_text = if plugin_name == "daisyui" do
+      ~s[      '#{plugin_name}': await import('#{plugin_name}'),\n      '#{plugin_name}/theme': await import('#{plugin_name}/theme'),]
+    else
+      ~s[      '#{plugin_name}': await import('#{plugin_name}'),]
+    end
 
     case patch_content(content, patch_string_at, patch_text, "", false, :after) do
       {:ok, new_content} -> new_content

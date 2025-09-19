@@ -22,7 +22,6 @@ defmodule Defdo.TailwindBuilder.Builder do
   - `:version` - TailwindCSS version to compile
   - `:source_path` - Path to TailwindCSS source code
   - `:debug` - Enable debug mode
-  - `:target_arch` - Target architecture for cross-compilation (v4 only)
   - `:validate_tools` - Whether to validate required tools
   """
   def compile(opts \\ []) do
@@ -62,14 +61,12 @@ defmodule Defdo.TailwindBuilder.Builder do
       :source_path,
       :debug,
       :validate_tools,
-      :target_arch
     ])
 
     version = opts[:version] || raise ArgumentError, "version is required"
     source_path = opts[:source_path] || raise ArgumentError, "source_path is required"
     debug = Keyword.get(opts, :debug, false)
     validate_tools = Keyword.get(opts, :validate_tools, true)
-    target_arch = opts[:target_arch]
 
     # Track build start
     start_time = System.monotonic_time()
@@ -83,7 +80,7 @@ defmodule Defdo.TailwindBuilder.Builder do
 
     with {:validate_tools, :ok} <- {:validate_tools, maybe_validate_tools_with_telemetry(version, validate_tools)},
          {:validate_paths, {:ok, paths}} <- {:validate_paths, validate_and_get_paths_with_telemetry(source_path, version)},
-         {:compile, compilation_result} <- {:compile, execute_compilation_with_telemetry(version, paths, debug, target_arch)} do
+         {:compile, compilation_result} <- {:compile, execute_compilation_with_telemetry(version, paths, debug)} do
       Logger.debug("Compilation result: #{inspect(compilation_result)}")
 
       end_time = System.monotonic_time()
@@ -363,7 +360,7 @@ defmodule Defdo.TailwindBuilder.Builder do
     result
   end
 
-  defp execute_compilation_with_telemetry(version, paths, debug, target_arch) do
+  defp execute_compilation_with_telemetry(version, paths, debug) do
     start_time = System.monotonic_time()
     compilation_method = Core.get_compilation_method(version)
 
@@ -374,7 +371,7 @@ defmodule Defdo.TailwindBuilder.Builder do
       tailwind_root: paths.tailwind_root
     })
 
-    result = execute_compilation(version, paths, debug, target_arch)
+    result = execute_compilation(version, paths, debug)
 
     end_time = System.monotonic_time()
     duration_ms = System.convert_time_unit(end_time - start_time, :native, :millisecond)
@@ -479,14 +476,14 @@ defmodule Defdo.TailwindBuilder.Builder do
     (is_nil(paths.standalone_root) or File.exists?(paths.standalone_root))
   end
 
-  defp execute_compilation(version, paths, debug, target_arch) do
+  defp execute_compilation(version, paths, debug) do
     constraints = Core.get_version_constraints(version)
 
     case constraints.major_version do
       :v3 -> compile_v3(paths, debug)
-      :v4 -> compile_v4(paths, debug, version, target_arch)
-      :v5 -> compile_v5(paths, debug, version, target_arch)
-      :v6 -> compile_v6(paths, debug, version, target_arch)
+      :v4 -> compile_v4(paths, debug, version)
+      :v5 -> compile_v5(paths, debug, version)
+      :v6 -> compile_v6(paths, debug, version)
       _ -> {:error, :unsupported_version}
     end
   end
@@ -502,25 +499,20 @@ defmodule Defdo.TailwindBuilder.Builder do
     execute_compilation_steps(steps, debug)
   end
 
-  defp compile_v4(paths, debug, version, target_arch) do
+  defp compile_v4(paths, debug, version) do
     # TailwindCSS v4 uses pnpm workspace + Rust compilation (official method)
     Logger.info("Building TailwindCSS v4 using pnpm workspace + Rust (official method)")
 
     # Build pnpm commands following official GitHub Actions workflow
     install_step = {"pnpm install", "pnpm", ["install"], paths.tailwind_root}
 
-    # Build the oxide crate for the target platform
-    oxide_build_step = if target_arch do
-      Logger.info("Cross-compiling oxide for target: #{target_arch}")
-      {"pnpm oxide build", "pnpm", ["run", "--filter", "./crates/node", "build:platform", "--target=#{target_arch}"], paths.tailwind_root}
-    else
-      {"pnpm oxide build", "pnpm", ["run", "--filter", "./crates/node", "build:platform"], paths.tailwind_root}
-    end
+    # Build the oxide crate (native compilation only)
+    oxide_build_step = {"pnpm oxide build", "pnpm", ["run", "--filter", "./crates/node", "build:platform"], paths.tailwind_root}
 
     # Build the entire workspace first
     workspace_build_step = {"pnpm workspace build", "pnpm", ["run", "build"], paths.tailwind_root}
 
-    # Build standalone binaries using the official script
+    # Build standalone binaries (native compilation only)
     standalone_build_step = {"bun standalone build", "bun", ["run", "build"], Path.join(paths.tailwind_root, "packages/@tailwindcss-standalone")}
 
     steps = [install_step, oxide_build_step, workspace_build_step, standalone_build_step]
@@ -528,17 +520,13 @@ defmodule Defdo.TailwindBuilder.Builder do
     execute_compilation_steps(steps, debug, version)
   end
 
-  defp compile_v5(paths, debug, version, target_arch) do
+
+  defp compile_v5(paths, debug, version) do
     # TailwindCSS v5 - assume continued Rust-based approach
     Logger.info("Building TailwindCSS v5 using Rust/Cargo (future version)")
 
-    # Build Cargo command with optional target architecture
-    cargo_args = if target_arch do
-      Logger.info("Cross-compiling for target: #{target_arch}")
-      ["build", "--release", "--target", target_arch]
-    else
-      ["build", "--release"]
-    end
+    # Build Cargo command (native compilation only)
+    cargo_args = ["build", "--release"]
 
     steps = [
       {"cargo build (release)", "cargo", cargo_args, paths.tailwind_root}
@@ -547,17 +535,12 @@ defmodule Defdo.TailwindBuilder.Builder do
     execute_compilation_steps(steps, debug, version)
   end
 
-  defp compile_v6(paths, debug, version, target_arch) do
+  defp compile_v6(paths, debug, version) do
     # TailwindCSS v6 - assume continued Rust-based approach
     Logger.info("Building TailwindCSS v6 using Rust/Cargo (future version)")
 
-    # Build Cargo command with optional target architecture
-    cargo_args = if target_arch do
-      Logger.info("Cross-compiling for target: #{target_arch}")
-      ["build", "--release", "--target", target_arch]
-    else
-      ["build", "--release"]
-    end
+    # Build Cargo command (native compilation only)
+    cargo_args = ["build", "--release"]
 
     steps = [
       {"cargo build (release)", "cargo", cargo_args, paths.tailwind_root}
