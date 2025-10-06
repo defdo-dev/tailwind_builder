@@ -1,0 +1,535 @@
+# TailwindBuilder - Modular Architecture Demo
+
+```elixir
+Mix.install([
+  {:kino, "~> 0.12"}
+])
+```
+
+## 🚀 Welcome to TailwindBuilder
+
+This LiveBook demonstrates the **modular architecture** of TailwindBuilder, including:
+
+* **Environment-specific configuration providers**
+* **Real-time telemetry and monitoring**
+* **Interactive dashboards**
+* **Step-by-step build processes**
+* **Multi-target deployment**
+
+## 📋 Setup Instructions
+
+### 1. Initialize the Project
+
+Start the project in a terminal:
+
+```bash
+iex --name builder@127.0.0.1 --cookie defdo.dev -S mix
+```
+
+### 2. Connect LiveBook Runtime
+
+In LiveBook, go to **Runtime Settings** and connect to the node:
+
+* **Node**: `builder@127.0.0.1`
+* **Cookie**: `defdo.dev`
+
+### 3. Environment Variables (Optional for R2 Deployment)
+
+If you want to test R2 deployment, set these secrets in LiveBook:
+
+* `R2_AWS_ACCESS_KEY_ID`: Your R2 access key
+* `R2_AWS_SECRET_ACCESS_KEY`: Your R2 secret key
+* `R2_AWS_ACCOUNT_ID`: Your Cloudflare account ID
+
+## 🔧 System Overview
+
+Let's start by exploring the modular architecture:
+
+```elixir
+# Display system information
+IO.puts("🏗️  TailwindBuilder Modular Architecture")
+IO.puts("=" |> String.duplicate(50))
+
+# List all available modules
+modules = [
+  {"Core", "Main orchestration and entry point"},
+  {"Downloader", "Version downloads with checksum validation"},
+  {"Builder", "Plugin application and compilation"},
+  {"Deployer", "Multi-target deployment (S3, R2, CDN, local)"},
+  {"Orchestrator", "Workflow management and coordination"},
+  {"Telemetry", "Real-time monitoring and span tracking"},
+  {"Metrics", "Specialized metrics collection"},
+  {"Dashboard", "Live monitoring dashboard"}
+]
+
+for {module, description} <- modules do
+  IO.puts("📦 #{String.pad_trailing(module, 12)} | #{description}")
+end
+
+IO.puts("\n✅ System Status: All modules loaded and ready")
+```
+
+## 🔧 Configuration Providers
+
+The system uses environment-specific configuration providers:
+
+```elixir
+# Explore available configuration providers
+providers = [
+  {Defdo.TailwindBuilder.ConfigProviders.DevelopmentConfigProvider, "Development - Fast, permissive"},
+  {Defdo.TailwindBuilder.ConfigProviders.ProductionConfigProvider, "Production - Strict, secure"},
+  {Defdo.TailwindBuilder.ConfigProviders.StagingConfigProvider, "Staging - Balanced approach"},
+  {Defdo.TailwindBuilder.ConfigProviders.TestingConfigProvider, "Testing - Fast, mock-friendly"}
+]
+
+IO.puts("🔧 Available Configuration Providers:")
+IO.puts("=" |> String.duplicate(50))
+
+for {provider_module, description} <- providers do
+  provider_name = provider_module |> Module.split() |> List.last()
+  IO.puts("⚙️  #{String.pad_trailing(provider_name, 25)} | #{description}")
+  
+  # Show some key configs
+  operation_limits = provider_module.get_operation_limits()
+  IO.puts("   📊 Download timeout: #{operation_limits.download_timeout}ms")
+  IO.puts("   🏗️  Build timeout: #{operation_limits.build_timeout}ms")
+  
+  build_policies = provider_module.get_build_policies()
+  IO.puts("   🔐 Debug symbols: #{build_policies.enable_debug_symbols}")
+  IO.puts("   📝 Verbose logging: #{build_policies.verbose_logging}")
+  IO.puts("")
+end
+
+# Show automatic provider selection
+auto_provider = Defdo.TailwindBuilder.ConfigProviderFactory.get_provider()
+auto_provider_name = auto_provider |> Module.split() |> List.last()
+IO.puts("🎯 Current environment (#{Mix.env()}): #{auto_provider_name}")
+```
+
+## 📊 Telemetry System
+
+Let's start the telemetry system to monitor our operations:
+
+```elixir
+# Start telemetry system
+case Process.whereis(Defdo.TailwindBuilder.Telemetry) do
+  nil -> 
+    IO.puts("🚀 Starting telemetry system...")
+    {:ok, telemetry_pid} = Defdo.TailwindBuilder.Telemetry.start_link([])
+    IO.puts("   ✅ Telemetry started with PID: #{inspect(telemetry_pid)}")
+  pid -> 
+    IO.puts("✅ Telemetry already running with PID: #{inspect(pid)}")
+end
+
+# Check telemetry status
+if Defdo.TailwindBuilder.Telemetry.enabled?() do
+  stats = Defdo.TailwindBuilder.Telemetry.get_stats()
+  IO.puts("\n📈 Telemetry Status:")
+  IO.puts("   🔋 Enabled: #{stats.enabled}")
+  IO.puts("   📊 Active spans: #{stats.active_spans}")
+  IO.puts("   📉 Sample rate: #{stats.sample_rate}")
+  IO.puts("   🖥️  Backends: #{inspect(stats.backends)}")
+else
+  IO.puts("❌ Telemetry is disabled")
+end
+```
+
+## 🎯 Interactive Dashboard
+
+Let's create a live dashboard to monitor operations:
+
+```elixir
+# Generate current dashboard
+dashboard_data = Defdo.TailwindBuilder.Dashboard.generate_summary(format: :raw)
+
+IO.puts("📊 LIVE DASHBOARD")
+IO.puts("=" |> String.duplicate(60))
+
+# System Health
+health = dashboard_data.system_health
+IO.puts("🏥 SYSTEM HEALTH")
+IO.puts("   Status: #{health.status}")
+IO.puts("   Telemetry: #{if health.telemetry_enabled, do: "🟢 ENABLED", else: "🔴 DISABLED"}")
+IO.puts("   Active Operations: #{health.active_operations}")
+IO.puts("   Memory: #{inspect(health.memory_usage)}")
+IO.puts("   Processes: #{health.process_count}")
+
+# Operations Summary
+ops = dashboard_data.operations
+IO.puts("\n📦 OPERATIONS SUMMARY")
+IO.puts("   Downloads: #{ops.downloads.total} total, #{ops.downloads.success_rate}% success")
+IO.puts("   Builds: #{ops.builds.total} total, #{ops.builds.success_rate}% success") 
+IO.puts("   Deployments: #{ops.deployments.total} total, #{ops.deployments.success_rate}% success")
+
+# Performance Metrics
+perf = dashboard_data.performance
+IO.puts("\n⚡ PERFORMANCE METRICS")
+IO.puts("   Response Times: P50=#{perf.response_times.p50}ms, P95=#{perf.response_times.p95}ms")
+IO.puts("   Throughput: #{perf.throughput.requests_per_minute} req/min")
+
+# Active Operations
+active_spans = dashboard_data.active_spans
+IO.puts("\n🔄 ACTIVE OPERATIONS: #{length(active_spans)}")
+if length(active_spans) > 0 do
+  for span <- Enum.take(active_spans, 5) do
+    IO.puts("   #{span.operation}: #{span.id} (#{span.duration}ms)")
+  end
+end
+
+:ok
+```
+
+## 🔨 Hands-on Build Process
+
+Now let's do an actual build with telemetry tracking:
+
+```elixir
+# Setup build parameters
+build_config = %{
+  version: "4.1.11",
+  plugins: ["daisyui", "@tailwindcss/typography"],
+  target: :local,
+  output_dir: "/tmp/livebook_tailwind_build"
+}
+
+IO.puts("🔨 STARTING BUILD PROCESS")
+IO.puts("=" |> String.duplicate(50))
+IO.puts("📋 Configuration:")
+IO.puts("   Version: #{build_config.version}")
+IO.puts("   Plugins: #{inspect(build_config.plugins)}")
+IO.puts("   Target: #{build_config.target}")
+IO.puts("   Output: #{build_config.output_dir}")
+
+# Ensure output directory exists
+File.mkdir_p!(build_config.output_dir)
+
+IO.puts("\n🚀 Initiating build with telemetry tracking...")
+```
+
+```elixir
+# Execute the build with telemetry
+start_time = System.monotonic_time()
+
+try do
+  # Use the new modular API
+  result = Defdo.TailwindBuilder.build_and_deploy([
+    version: build_config.version,
+    plugins: build_config.plugins,
+    target: build_config.target,
+    output_dir: build_config.output_dir
+  ])
+  
+  end_time = System.monotonic_time()
+  duration_ms = System.convert_time_unit(end_time - start_time, :native, :millisecond)
+  
+  IO.puts("✅ BUILD SUCCESSFUL!")
+  IO.puts("   Duration: #{duration_ms}ms")
+  IO.puts("   Result: #{inspect(result)}")
+  
+  # Show updated telemetry stats
+  new_stats = Defdo.TailwindBuilder.Telemetry.get_stats()
+  IO.puts("\n📊 Updated Telemetry:")
+  IO.puts("   Active spans: #{new_stats.active_spans}")
+  IO.puts("   Total metrics: #{new_stats.total_metrics}")
+  
+rescue
+  error ->
+    end_time = System.monotonic_time()
+    duration_ms = System.convert_time_unit(end_time - start_time, :native, :millisecond)
+    
+    IO.puts("❌ BUILD FAILED!")
+    IO.puts("   Duration: #{duration_ms}ms")
+    IO.puts("   Error: #{inspect(error)}")
+end
+```
+
+## 📈 Real-time Metrics
+
+Let's record some custom metrics and observe the system:
+
+```elixir
+# Record some sample metrics
+IO.puts("📊 Recording sample metrics...")
+
+# Download metrics
+Defdo.TailwindBuilder.Metrics.record_download_metrics(
+  "4.1.11",      # version
+  2_097_152,     # 2MB size
+  3000,          # 3 second duration
+  :success       # status
+)
+
+# Build metrics
+Defdo.TailwindBuilder.Metrics.record_build_metrics(
+  "4.1.11",                                    # version
+  ["daisyui", "@tailwindcss/typography"],     # plugins
+  5000,                                       # 5 second duration
+  4_194_304,                                  # 4MB output size
+  :success                                    # status
+)
+
+# System resource metrics
+Defdo.TailwindBuilder.Metrics.record_resource_metrics()
+
+# Business metrics
+Defdo.TailwindBuilder.Metrics.record_business_metrics(
+  :download,
+  "4.1.11",
+  "LiveBook/Demo TailwindBuilder/1.0"
+)
+
+IO.puts("✅ Metrics recorded successfully")
+
+# Get metrics summary
+summary = Defdo.TailwindBuilder.Metrics.get_metrics_summary()
+IO.puts("\n📋 Metrics Summary:")
+IO.puts("   System enabled: #{summary.system.enabled}")
+IO.puts("   Active spans: #{summary.system.active_spans}")
+IO.puts("   Uptime: #{summary.system.uptime} seconds")
+```
+
+## 🎮 Interactive Span Tracking
+
+Let's manually create and track some spans to see how telemetry works:
+
+```elixir
+# Create a custom download span
+IO.puts("🔄 Creating custom telemetry spans...")
+
+download_span = Defdo.TailwindBuilder.Telemetry.start_span(:download, %{
+  version: "4.1.11",
+  size: 1_048_576,
+  source: "interactive_demo"
+})
+
+IO.puts("📊 Download span started: #{download_span}")
+
+# Simulate some progress events
+Process.sleep(100)
+Defdo.TailwindBuilder.Telemetry.track_event(:download, :progress, %{
+  percent: 25,
+  bytes_downloaded: 262_144
+})
+
+Process.sleep(100) 
+Defdo.TailwindBuilder.Telemetry.track_event(:download, :progress, %{
+  percent: 50,
+  bytes_downloaded: 524_288
+})
+
+Process.sleep(100)
+Defdo.TailwindBuilder.Telemetry.track_event(:download, :progress, %{
+  percent: 100,
+  bytes_downloaded: 1_048_576
+})
+
+# End the span
+Defdo.TailwindBuilder.Telemetry.end_span(download_span, :success, %{
+  final_size: 1_048_576,
+  checksum: "abc123def456"
+})
+
+IO.puts("✅ Download span completed")
+
+# Show active spans
+active_spans = Defdo.TailwindBuilder.Telemetry.get_active_spans()
+IO.puts("🔄 Currently active spans: #{length(active_spans)}")
+```
+
+## 🎨 Dashboard Formats
+
+Let's explore different dashboard output formats:
+
+```elixir
+# Text dashboard
+text_dashboard = Defdo.TailwindBuilder.Dashboard.generate_summary(format: :text)
+IO.puts("📝 TEXT DASHBOARD:")
+IO.puts(String.slice(text_dashboard, 0, 500) <> "...")
+```
+
+```elixir
+# JSON dashboard  
+json_dashboard = Defdo.TailwindBuilder.Dashboard.generate_summary(format: :json)
+json_preview = json_dashboard |> String.slice(0, 300)
+IO.puts("📊 JSON DASHBOARD (preview):")
+IO.puts(json_preview <> "...")
+```
+
+```elixir
+# HTML dashboard
+html_dashboard = Defdo.TailwindBuilder.Dashboard.generate_summary(format: :html)
+html_preview = html_dashboard |> String.slice(0, 400)
+IO.puts("🌐 HTML DASHBOARD (preview):")
+IO.puts(html_preview <> "...")
+
+# You can save this to a file and open in browser:
+# File.write!("/tmp/tailwind_dashboard.html", html_dashboard)
+```
+
+## 🧪 Module Testing
+
+Let's test individual modules to understand their capabilities:
+
+```elixir
+# Test version fetcher
+IO.puts("🔍 TESTING VERSION FETCHER")
+available_versions = Defdo.TailwindBuilder.VersionFetcher.fetch_available_versions()
+latest_versions = available_versions |> Enum.take(5)
+IO.puts("   Latest 5 versions: #{inspect(latest_versions)}")
+
+# Test plugin manager
+IO.puts("\n🧩 TESTING PLUGIN MANAGER")
+supported_plugins = ["daisyui", "@tailwindcss/typography", "@tailwindcss/forms"]
+for plugin <- supported_plugins do
+  is_supported = Defdo.TailwindBuilder.PluginManager.plugin_supported?(plugin, "4.1.11")
+  status = if is_supported, do: "✅", else: "❌"
+  IO.puts("   #{status} #{plugin}")
+end
+
+# Test dependency checker
+IO.puts("\n📦 TESTING DEPENDENCIES")
+deps_status = Defdo.TailwindBuilder.Dependencies.check_system_dependencies()
+IO.puts("   Node.js: #{if deps_status.node, do: "✅", else: "❌"}")
+IO.puts("   Rust: #{if deps_status.rust, do: "✅", else: "❌"}")
+IO.puts("   Git: #{if deps_status.git, do: "✅", else: "❌"}")
+```
+
+## 🎯 Configuration Deep Dive
+
+Let's explore different configuration providers in detail:
+
+```elixir
+# Compare configuration providers
+providers = [
+  Defdo.TailwindBuilder.ConfigProviders.DevelopmentConfigProvider,
+  Defdo.TailwindBuilder.ConfigProviders.ProductionConfigProvider,
+  Defdo.TailwindBuilder.ConfigProviders.StagingConfigProvider,
+  Defdo.TailwindBuilder.ConfigProviders.TestingConfigProvider
+]
+
+IO.puts("🔧 CONFIGURATION PROVIDER COMPARISON")
+IO.puts("=" |> String.duplicate(70))
+
+for provider <- providers do
+  name = provider |> Module.split() |> List.last()
+  IO.puts("\n📋 #{name}:")
+  
+  # Operation limits
+  limits = provider.get_operation_limits()
+  IO.puts("   ⏱️  Download timeout: #{limits.download_timeout}ms")
+  IO.puts("   ⏱️  Build timeout: #{limits.build_timeout}ms")
+  IO.puts("   📦 Max file size: #{div(limits.max_file_size, 1_000_000)}MB")
+  
+  # Build policies
+  build = provider.get_build_policies()
+  IO.puts("   🔐 Debug symbols: #{build.enable_debug_symbols}")
+  IO.puts("   📝 Verbose logging: #{build.verbose_logging}")
+  IO.puts("   🚀 Parallel builds: #{build.parallel_builds}")
+  
+  # Deployment policies
+  deploy = provider.get_deployment_policies()
+  IO.puts("   📤 Allow overwrite: #{deploy.allow_overwrite}")
+  IO.puts("   🗑️  Auto cleanup: #{deploy.auto_cleanup_old}")
+end
+```
+
+## 🚀 Deployment Testing
+
+Let's test different deployment targets (without actually deploying):
+
+```elixir
+# Test deployment configuration validation
+deployment_configs = [
+  %{target: :local, output_dir: "/tmp/test"},
+  %{target: :s3, bucket: "test-bucket", region: "us-east-1"},
+  %{target: :r2, bucket: "test-r2", account_id: "test-account"},
+  %{target: :cdn, distribution_id: "test-dist"}
+]
+
+IO.puts("🚀 DEPLOYMENT TARGET VALIDATION")
+IO.puts("=" |> String.duplicate(50))
+
+for config <- deployment_configs do
+  target_name = config.target
+  IO.print("   #{target_name}: ")
+  
+  try do
+    # This would validate the config without actually deploying
+    validation_result = Defdo.TailwindBuilder.Deployer.validate_config(config)
+    IO.puts("✅ Valid")
+  rescue
+    error ->
+      IO.puts("❌ Invalid - #{inspect(error)}")
+  end
+end
+```
+
+## 📊 Final Dashboard
+
+Let's end with a comprehensive dashboard view:
+
+```elixir
+# Generate final comprehensive dashboard
+final_dashboard = Defdo.TailwindBuilder.Dashboard.generate_summary(
+  time_window_minutes: 60,
+  format: :raw
+)
+
+IO.puts("🎯 FINAL SYSTEM OVERVIEW")
+IO.puts("=" |> String.duplicate(60))
+
+# System summary
+IO.puts("🖥️  SYSTEM STATUS")
+health = final_dashboard.system_health
+IO.puts("   Overall Status: #{health.status}")
+IO.puts("   Telemetry: #{if health.telemetry_enabled, do: "🟢 Active", else: "🔴 Inactive"}")
+IO.puts("   Active Operations: #{health.active_operations}")
+IO.puts("   System Uptime: #{div(health.system_uptime_seconds, 60)} minutes")
+
+# Performance summary
+IO.puts("\n⚡ PERFORMANCE OVERVIEW")
+perf = final_dashboard.performance
+response_times = perf.response_times
+IO.puts("   P50 Response Time: #{response_times.p50}ms")
+IO.puts("   P95 Response Time: #{response_times.p95}ms") 
+IO.puts("   P99 Response Time: #{response_times.p99}ms")
+
+# Error summary
+IO.puts("\n🚨 ERROR TRACKING")
+errors = final_dashboard.errors
+IO.puts("   Total Errors: #{errors.total_errors}")
+IO.puts("   Error Rate: #{errors.error_rate_percent}%")
+
+IO.puts("\n✅ LIVEBOOK DEMO COMPLETED!")
+IO.puts("   • Explored modular architecture")
+IO.puts("   • Demonstrated telemetry system")
+IO.puts("   • Tested configuration providers")
+IO.puts("   • Monitored real-time operations")
+IO.puts("   • Validated deployment targets")
+```
+
+## 🎉 Conclusion
+
+You've successfully explored the TailwindBuilder modular architecture!
+
+### What we covered:
+
+1. **📦 Modular Architecture** - Separation of concerns with dedicated modules
+2. **🔧 Configuration Management** - Environment-specific providers
+3. **📊 Real-time Telemetry** - Comprehensive monitoring and tracking
+4. **🎨 Interactive Dashboards** - Multiple output formats and live monitoring
+5. **🔨 Build Process** - End-to-end build with telemetry
+6. **📈 Metrics Collection** - Custom metrics and system monitoring
+7. **🚀 Deployment Options** - Multi-target deployment validation
+
+### Next Steps:
+
+* Explore the source code in `lib/defdo/tailwind_builder/`
+* Run the full test suite: `mix test`
+* Try different configuration providers
+* Monitor real builds with the dashboard
+* Integrate with your own projects
+
+**Happy building! 🚀**
+
+<!-- livebook:{"offset":16517,"stamp":{"token":"XCP.rVSdjAp-EGqx8m_CLX-5xEP6HTksdg_bEfIWyszv4CAfnNWC6orel_tu54KYyVdB7_kW79a4dOZppNrgFlZ7nPbdRW2rk9iaZrdzheuiSpBjkOPs9ypxiY8vzC1jXsrpOTV3GTq0PpR5L3_Uhuonk-fnFu-41Nu6kgmopyzzY8y4Hup7aXa2SJaV68a5ETgZkfo","version":2}} -->

@@ -37,7 +37,7 @@ File.mkdir_p!(tmp_dir)
 IO.puts("Working directory created at: #{tmp_dir}")
 
 # Step 2: Configure Tailwind version
-tailwind_version = "4.0.10"
+tailwind_version = "4.1.14"
 path = Path.join(tmp_dir, "tailwindcss-#{tailwind_version}")
 IO.puts("Using Tailwind CSS version: #{tailwind_version}")
 
@@ -48,10 +48,8 @@ if not File.exists?(path) do
   IO.puts("Download complete: #{inspect(download_result)}")
   
   # Define DaisyUI v5 plugin configuration
-  daisyui_v5 = %{
-    "version" => ~s["daisyui": "^5.0.0"]
-  }
-  
+  daisyui_v5 = %{"version" => ~s["daisyui": "^5.1.27"]}
+    
   IO.puts("Adding DaisyUI v5 plugin...")
   patch_result = Defdo.TailwindBuilder.add_plugin(daisyui_v5, tailwind_version, tmp_dir)
   IO.puts("Plugin added: #{inspect(patch_result)}")
@@ -81,11 +79,16 @@ account_id = System.get_env("LB_R2_AWS_ACCOUNT_ID") ||
   raise "Missing R2_AWS_ACCOUNT_ID environment variable"
 
 # Configure ExAws to work with Cloudflare R2
-Application.put_env(:ex_aws, :access_key_id, access_key)
-Application.put_env(:ex_aws, :secret_access_key, secret_access_key)
-Application.put_env(:ex_aws, :region, "auto")
-Application.put_env(:ex_aws, :json_codec, Jason)
-Application.put_env(:ex_aws, :s3, host: "#{account_id}.r2.cloudflarestorage.com")
+Application.put_env(:tailwind_builder, :aws, [
+  access_key_id: access_key,
+  secret_access_key: secret_access_key,
+  host: "#{account_id}.r2.cloudflarestorage.com",
+  region: "auto"
+])
+# Application.put_env(:ex_aws, :secret_access_key, secret_access_key)
+# Application.put_env(:ex_aws, :region, "auto")
+# Application.put_env(:ex_aws, :json_codec, Jason)
+# Application.put_env(:ex_aws, :s3, host: "#{account_id}.r2.cloudflarestorage.com")
 
 # Enable debug during development (comment out in production)
 # Application.put_env(:ex_aws, :debug_requests, true)
@@ -107,4 +110,4 @@ IO.puts("Files deployed: #{length(deploy_result)}")
 IO.puts("========================")
 ```
 
-<!-- livebook:{"offset":3379,"stamp":{"token":"XCP.7BhC9HQI20ncXf5QPylut5aktKKtUqxFeAd0clF5pS6eZQtYAKvtwfqcpGXe3TPcO_IAE8X0CnzuUFaXaKdWJnbn3c9VzAPH_vs_Vguz6gt3pxsuwi7xp8zJ1r2WcxbaHaHYzUvdAeeqUCmtF8QLSZbQSgw2EGYNdkKGMaN9ENxbpWNaKzqvMqD1chh76p6JV6U","version":2}} -->
+<!-- livebook:{"offset":3511,"stamp":{"token":"XCP.LsZL8g38anIBgAfYSuyvWOycICnk1DPDHFn27z3nWLPQRPlrgmALPRSGqulqX-ei97BhyvQJXyyeFzsgKaB7sRrBmg0u2qFf-lJ21p-SV4fTjHFkn_dZE8TPk5yGCDD5gjl0DB-AakIg7_-45wuamTlgG7HPF5dIdjb65M2gln4YI2ByFXMiad0zB7AMx7QgIQA","version":2}} -->
