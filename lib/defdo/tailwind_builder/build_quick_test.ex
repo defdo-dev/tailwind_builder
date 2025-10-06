@@ -18,8 +18,8 @@ defmodule Defdo.TailwindBuilder.BuildQuickTest do
 
   ## Test Scenarios
 
-  - `:v4_basic` - Tailwind v4.1.13 with DaisyUI v5.1.13
-  - `:v4_with_theme` - Tailwind v4.1.13 with DaisyUI and custom theme
+  - `:v4_basic` - Tailwind v4.1.14 with DaisyUI v5.1.27
+  - `:v4_with_theme` - Tailwind v4.1.14 with DaisyUI and custom theme
   - `:v3_legacy` - Tailwind v3.4.17 with DaisyUI v4.12
   - `:cross_platform` - Test cross-compilation capabilities
   """
@@ -30,15 +30,15 @@ defmodule Defdo.TailwindBuilder.BuildQuickTest do
 
   @test_scenarios %{
     v4_basic: %{
-      version: "4.1.13",
-      plugin: %{"version" => ~s["daisyui": "^5.1.13"]},
+      version: "4.1.14",
+      plugin: %{"version" => ~s["daisyui": "^5.1.27"]},
       description: "Basic Tailwind v4 with DaisyUI v5",
       expected_duration_ms: 90_000,
       test_css: "@import \"tailwindcss\"; @plugin \"daisyui\";"
     },
     v4_with_theme: %{
-      version: "4.1.13",
-      plugin: %{"version" => ~s["daisyui": "^5.1.13"]},
+      version: "4.1.14",
+      plugin: %{"version" => ~s["daisyui": "^5.1.27"]},
       theme: %{
         "mytheme" => %{
           "primary" => "#570df8",
@@ -63,8 +63,8 @@ defmodule Defdo.TailwindBuilder.BuildQuickTest do
       test_css: "@tailwind base; @tailwind components; @tailwind utilities;"
     },
     cross_platform: %{
-      version: "4.1.13",
-      plugin: %{"version" => ~s["daisyui": "^5.1.13"]},
+      version: "4.1.14",
+      plugin: %{"version" => ~s["daisyui": "^5.1.27"]},
       target_arch: "linux-x64",
       description: "Cross-platform build test (macOS → Linux)",
       expected_duration_ms: 100_000,

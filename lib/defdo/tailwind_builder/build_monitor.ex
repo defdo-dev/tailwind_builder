@@ -11,7 +11,7 @@ defmodule Defdo.TailwindBuilder.BuildMonitor do
       {:ok, monitor_pid} = BuildMonitor.start_monitoring(self())
 
       # Execute build (will send progress updates to monitor_pid)
-      TailwindBuilder.build("4.1.13", "/path/to/dir")
+      TailwindBuilder.build("4.1.14", "/path/to/dir")
 
       # Handle progress messages in your process
       # def handle_info({:build_progress, event}, state) do

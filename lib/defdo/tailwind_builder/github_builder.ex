@@ -19,7 +19,7 @@ defmodule Defdo.TailwindBuilder.GitHubBuilder do
 
       # Trigger a build for specific architecture
       {:ok, build_id} = GitHubBuilder.trigger_build(%{
-        version: "4.1.13",
+        version: "4.1.14",
         plugins: ["daisyui_v5"],
         target_arch: "linux-x64",
         callback_url: "https://your-app.com/api/builds/callback"
@@ -189,7 +189,7 @@ defmodule Defdo.TailwindBuilder.GitHubBuilder do
 
   defp prepare_workflow_inputs(opts, build_id) do
     inputs = %{
-      "version" => opts[:version] || "4.1.13",
+      "version" => opts[:version] || "4.1.14",
       "plugins" => Jason.encode!(opts[:plugins] || []),
       "target_arch" => opts[:target_arch] || "auto",
       "build_id" => build_id,

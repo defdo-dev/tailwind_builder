@@ -12,7 +12,7 @@ defmodule Defdo.TailwindBuilder.SmartBuilder do
 
       # Automatic strategy selection
       {:ok, result} = SmartBuilder.build([
-        version: "4.1.13",
+        version: "4.1.14",
         source_path: "/tmp/tailwind-source",
         target_arch: "linux-x64",  # Optional - triggers remote if not native
         plugins: ["daisyui"]
@@ -20,7 +20,7 @@ defmodule Defdo.TailwindBuilder.SmartBuilder do
 
       # Force specific strategy
       {:ok, result} = SmartBuilder.build([
-        version: "4.1.13",
+        version: "4.1.14",
         source_path: "/tmp/tailwind-source",
         strategy: :remote_only
       ])

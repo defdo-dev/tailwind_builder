@@ -37,7 +37,7 @@ File.mkdir_p!(tmp_dir)
 IO.puts("Working directory created at: #{tmp_dir}")
 
 # Step 2: Configure Tailwind version
-tailwind_version = "4.1.13"
+tailwind_version = "4.1.14"
 path = Path.join(tmp_dir, "tailwindcss-#{tailwind_version}")
 IO.puts("Using Tailwind CSS version: #{tailwind_version}")
 
@@ -48,7 +48,7 @@ if not File.exists?(path) do
   IO.puts("Download complete: #{inspect(download_result)}")
   
   # Define DaisyUI v5 plugin configuration
-  daisyui_v5 = %{"version" => ~s["daisyui": "^5.1.13"]}
+  daisyui_v5 = %{"version" => ~s["daisyui": "^5.1.27"]}
     
   IO.puts("Adding DaisyUI v5 plugin...")
   patch_result = Defdo.TailwindBuilder.add_plugin(daisyui_v5, tailwind_version, tmp_dir)

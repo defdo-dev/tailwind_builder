@@ -39,7 +39,7 @@ defmodule Defdo.TailwindBuilder.GitHubBuilderTest do
       System.delete_env("GITHUB_TOKEN")
 
       build_opts = %{
-        version: "4.1.13",
+        version: "4.1.14",
         plugins: ["daisyui_v5"],
         target_arch: "linux-x64"
       }
@@ -53,7 +53,7 @@ defmodule Defdo.TailwindBuilder.GitHubBuilderTest do
         post: fn _url, _opts -> {:ok, %Req.Response{status: 204, body: ""}} end
       ] do
         build_opts = %{
-          version: "4.1.13",
+          version: "4.1.14",
           plugins: ["daisyui_v5"],
           target_arch: "linux-x64",
           callback_url: "https://example.com/callback"

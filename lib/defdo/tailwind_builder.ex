@@ -27,7 +27,7 @@ defmodule Defdo.TailwindBuilder do
     DefaultConfigProvider
   }
 
-  @tailwind_latest "4.1.13"
+  @tailwind_latest "4.1.14"
 
   # Keep the same constants for compatibility
   @available_plugins %{
@@ -36,7 +36,7 @@ defmodule Defdo.TailwindBuilder do
       "statement" => ~s['daisyui': require('daisyui')]
     },
     "daisyui_v5" => %{
-      "version" => ~s["daisyui": "^5.1.13"]
+      "version" => ~s["daisyui": "^5.1.27"]
       # No "statement" for v4.x - uses index.ts patching with ES modules instead
     }
   }
