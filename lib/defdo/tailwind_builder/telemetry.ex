@@ -42,7 +42,7 @@ defmodule Defdo.TailwindBuilder.Telemetry do
   @metrics_prefix "tailwind_builder"
 
   # Operation types
-  @operations [:download, :build, :deploy, :plugin_install, :cross_compile]
+  @operations [:download, :build, :deploy, :plugin_install, :cross_compile, :github_build, :smart_build]
 
 
   # State structure
