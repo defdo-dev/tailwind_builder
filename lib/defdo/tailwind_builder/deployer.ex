@@ -57,6 +57,8 @@ defmodule Defdo.TailwindBuilder.Deployer do
 
     with {:find_binaries, {:ok, binaries}} <-
            {:find_binaries, find_distributable_binaries(source_path, version)},
+         {:filter_binaries, {:ok, binaries}} <-
+           {:filter_binaries, filter_binaries_for_deploy(binaries, version)},
          {:validate, :ok} <- {:validate, maybe_validate_binaries(binaries, validate_binaries)},
          {:deploy_binaries, {:ok, deployed}} <-
            {:deploy_binaries, deploy_binaries(binaries, destination, opts)},
@@ -218,6 +220,26 @@ defmodule Defdo.TailwindBuilder.Deployer do
 
   defp maybe_generate_manifest(_deployed_files, _version, false), do: {:ok, nil}
 
+  defp filter_binaries_for_deploy(binaries, version) do
+    case Core.get_version_constraints(version) do
+      %{major_version: :v4} ->
+        host_arch = Core.get_host_architecture()
+
+        filtered =
+          Enum.filter(binaries, fn %{architecture: arch} ->
+            match_architecture?(arch, host_arch)
+          end)
+
+        case filtered do
+          [] -> {:error, {:no_binaries_for_host, host_arch}}
+          list -> {:ok, list}
+        end
+
+      _ ->
+        {:ok, binaries}
+    end
+  end
+
   defp get_dist_directory(source_path, version) do
     case Core.get_version_constraints(version) do
       %{major_version: :v3} ->
@@ -331,6 +353,19 @@ defmodule Defdo.TailwindBuilder.Deployer do
       filename =~ "freebsd" -> "freebsd-x64"
       true -> "unknown"
     end
+  end
+
+  defp match_architecture?("unknown", _host), do: false
+
+  defp match_architecture?(binary_arch, host_arch) do
+    normalize_arch(binary_arch) == normalize_arch(host_arch)
+  end
+
+  defp normalize_arch(arch) when is_binary(arch) do
+    arch
+    |> String.replace(~r/-gnu$/, "")
+    |> String.replace(~r/-musl$/, "")
+    |> String.replace(~r/-msvc$/, "")
   end
 
   defp format_file_info({:ok, deployed_info}) do

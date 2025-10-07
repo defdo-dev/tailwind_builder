@@ -229,15 +229,13 @@ defmodule Defdo.TailwindBuilder.Builder do
 
     # Set environment variables for TailwindCSS v4.x builds
     env_vars =
-      case {command, version} do
-        {"pnpm", v} when is_binary(v) and binary_part(v, 0, 2) == "4." ->
-          [
-            {"CARGO_PROFILE_RELEASE_LTO", "off"},
-            {"CARGO_TARGET_X86_64_PC_WINDOWS_MSVC_LINKER", "lld-link"}
-          ]
-
-        _ ->
-          []
+      if command == "pnpm" and version_is_v4?(version) do
+        [
+          {"CARGO_PROFILE_RELEASE_LTO", "off"},
+          {"CARGO_TARGET_X86_64_PC_WINDOWS_MSVC_LINKER", "lld-link"}
+        ] ++ rust_environment_vars()
+      else
+        []
       end
 
     system_opts = [
@@ -544,6 +542,8 @@ defmodule Defdo.TailwindBuilder.Builder do
     # TailwindCSS v4 uses pnpm workspace + Rust compilation (official method)
     Logger.info("Building TailwindCSS v4 using pnpm workspace + Rust (official method)")
 
+    ensure_turbo_env_passthrough(paths.tailwind_root)
+
     # Build pnpm commands following official GitHub Actions workflow
     install_step = {"pnpm install", "pnpm", ["install"], paths.tailwind_root}
 
@@ -680,5 +680,78 @@ defmodule Defdo.TailwindBuilder.Builder do
        standalone_root: standalone_root,
        dist_path: Path.join(standalone_root, "dist")
      }}
+  end
+
+  defp rust_environment_vars do
+    rustup_home =
+      System.get_env("RUSTUP_HOME") ||
+        case System.cmd("rustup", ["show", "home"]) do
+          {out, 0} -> String.trim(out)
+          _ -> nil
+        end
+
+    cargo_home =
+      System.get_env("CARGO_HOME") ||
+        case rustup_home do
+          nil -> nil
+          home -> home
+        end
+
+    toolchain =
+      System.get_env("RUSTUP_TOOLCHAIN") ||
+        case System.cmd("rustup", ["show", "active-toolchain"]) do
+          {out, 0} ->
+            out
+            |> String.trim()
+            |> String.split()
+            |> List.first()
+
+          _ ->
+            nil
+        end
+
+    [
+      maybe_env("RUSTUP_HOME", rustup_home),
+      maybe_env("CARGO_HOME", cargo_home),
+      maybe_env("RUSTUP_TOOLCHAIN", toolchain)
+    ]
+    |> Enum.reject(&is_nil/1)
+  end
+
+  defp maybe_env(_key, nil), do: nil
+  defp maybe_env(key, value), do: {key, value}
+
+  defp version_is_v4?(version) when is_binary(version), do: String.starts_with?(version, "4.")
+  defp version_is_v4?(_), do: false
+
+  defp ensure_turbo_env_passthrough(tailwind_root) do
+    turbo_path = Path.join(tailwind_root, "turbo.json")
+
+    with true <- File.exists?(turbo_path),
+         {:ok, content} <- File.read(turbo_path),
+         [_, inner] <- Regex.run(~r/"globalPassThroughEnv":\s*\[(.*?)\]/s, content),
+         {:ok, envs} <- Jason.decode("[" <> inner <> "]") do
+      required = ["RUSTUP_HOME", "CARGO_HOME", "RUSTUP_TOOLCHAIN"]
+      updated_envs = Enum.uniq(envs ++ required)
+
+      if updated_envs != envs do
+        new_inner =
+          updated_envs
+          |> Enum.map(&Jason.encode!/1)
+          |> Enum.join(", ")
+
+        updated_content =
+          String.replace(
+            content,
+            "\"globalPassThroughEnv\": [" <> inner <> "]",
+            "\"globalPassThroughEnv\": [" <> new_inner <> "]",
+            global: false
+          )
+
+        File.write!(turbo_path, updated_content)
+      end
+    else
+      _ -> :ok
+    end
   end
 end

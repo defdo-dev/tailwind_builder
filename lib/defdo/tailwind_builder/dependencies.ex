@@ -10,7 +10,7 @@ defmodule Defdo.TailwindBuilder.Dependencies do
   """
   require Logger
 
-  @required_tools ~w(npm pnpm node cargo rustup)
+  @required_tools ~w(npm pnpm node cargo rustup bun)
   @required_rust_targets ~w(wasm32-wasip1-threads)
   @tailwind_v4_requirements %{
     "4.0.0" => ["wasm32-wasip1-threads"],
@@ -44,9 +44,11 @@ defmodule Defdo.TailwindBuilder.Dependencies do
   defp asdf_set!(tool, version, cwd) do
     if asdf_supports_set?() do
       System.cmd("asdf", ["set", tool, version], into: IO.stream(), cd: cwd)
+      System.cmd("asdf", ["set", "--home", tool, version], into: IO.stream())
     else
       # Fallback para asdf antiguos
       System.cmd("asdf", ["local", tool, version], into: IO.stream(), cd: cwd)
+      System.cmd("asdf", ["global", tool, version], into: IO.stream())
     end
   end
 
@@ -76,11 +78,17 @@ defmodule Defdo.TailwindBuilder.Dependencies do
         Missing required build tools: #{Enum.join(missing, ", ")}
 
         You can install them manually:
-        - Rust (for cargo): curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
+        - Rust (for cargo):
+          asdf: asdf install rust latest && asdf set rust latest && asdf set --home rust latest
+          manual: curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
         - Node.js (for npm):
           Ubuntu: curl -fsSL https://deb.nodesource.com/setup_lts.x | sudo -E bash - && sudo apt-get install -y nodejs
           macOS: brew install node
         - pnpm: npm install -g pnpm
+        - Bun:
+          asdf: asdf install bun latest && asdf set bun latest && asdf set --home bun latest
+          brew: brew install bun
+          manual: curl -fsSL https://bun.sh/install | bash
         Or run: mix tailwind.install_deps
         """
     end
@@ -115,6 +123,7 @@ defmodule Defdo.TailwindBuilder.Dependencies do
       rust: is_installed?("cargo"),
       rustup: is_installed?("rustup"),
       git: is_installed?("git"),
+      bun: is_installed?("bun"),
       rust_targets: get_installed_rust_targets()
     }
   end
@@ -129,19 +138,24 @@ defmodule Defdo.TailwindBuilder.Dependencies do
 
         System.cmd("asdf", ["plugin", "add", "nodejs"], into: IO.stream())
         System.cmd("asdf", ["plugin", "add", "rust"], into: IO.stream())
+        System.cmd("asdf", ["plugin", "add", "bun"], into: IO.stream())
 
         node_latest = latest_with_asdf!("nodejs")
         rust_latest = latest_with_asdf!("rust")
+        bun_latest = latest_with_asdf!("bun")
 
         System.cmd("asdf", ["install", "nodejs", node_latest], into: IO.stream())
         System.cmd("asdf", ["install", "rust", rust_latest], into: IO.stream())
+        System.cmd("asdf", ["install", "bun", bun_latest], into: IO.stream())
 
         # Compat: asdf >= 0.17 usa 'set'; asdf viejos usan 'local'
         asdf_set!("nodejs", node_latest, cwd)
         asdf_set!("rust", rust_latest, cwd)
+        asdf_set!("bun", bun_latest, cwd)
 
         System.cmd("asdf", ["reshim", "nodejs", node_latest], into: IO.stream())
         System.cmd("asdf", ["reshim", "rust", rust_latest], into: IO.stream())
+        System.cmd("asdf", ["reshim", "bun", bun_latest], into: IO.stream())
 
         # Usa el Node de asdf
         System.cmd("asdf", ["exec", "npm", "install", "-g", "pnpm"], into: IO.stream())
@@ -150,6 +164,7 @@ defmodule Defdo.TailwindBuilder.Dependencies do
         Logger.info("Using homebrew to install dependencies")
         System.cmd("brew", ["install", "node"], into: IO.stream())
         System.cmd("brew", ["install", "rust"], into: IO.stream())
+        System.cmd("brew", ["install", "bun"], into: IO.stream())
         System.cmd("npm", ["install", "-g", "pnpm"], into: IO.stream())
 
       true ->
@@ -165,6 +180,8 @@ defmodule Defdo.TailwindBuilder.Dependencies do
 
         System.cmd("sudo", ["installer", "-pkg", "node.pkg", "-target", "/"], into: IO.stream())
         System.cmd("npm", ["install", "-g", "pnpm"], into: IO.stream())
+        System.cmd("bash", ["-c", "curl -fsSL https://bun.sh/install | bash"], into: IO.stream())
+        Logger.info("If bun is not available yet, add ~/.bun/bin to your PATH")
     end
 
     install_rust_targets!()
@@ -250,16 +267,23 @@ defmodule Defdo.TailwindBuilder.Dependencies do
           System.cmd("asdf", ["plugin", "remove", "rust"], into: IO.stream())
         end
 
+        if "bun" in plugins do
+          System.cmd("asdf", ["uninstall", "bun"], into: IO.stream())
+          System.cmd("asdf", ["plugin", "remove", "bun"], into: IO.stream())
+        end
+
       is_installed?("brew") ->
         Logger.info("Uninstalling via homebrew")
         System.cmd("brew", ["uninstall", "node"], into: IO.stream())
         System.cmd("brew", ["uninstall", "rust"], into: IO.stream())
+        System.cmd("brew", ["uninstall", "bun"], into: IO.stream())
 
       true ->
         Logger.info("Manual uninstallation required")
         Logger.info("Please remove manually:")
         Logger.info("- Node.js: sudo rm -rf /usr/local/bin/node /usr/local/bin/npm")
         Logger.info("- Rust: rustup self uninstall")
+        Logger.info("- Bun: remove ~/.bun and related PATH entries")
     end
 
     :ok
@@ -269,7 +293,7 @@ defmodule Defdo.TailwindBuilder.Dependencies do
   Checks if required Rust targets are installed for a specific Tailwind version
   """
   def check_rust_targets_for_version(version) do
-    required_targets = Map.get(@tailwind_v4_requirements, version, [])
+    required_targets = targets_for_version(version)
     installed_targets = get_installed_rust_targets()
 
     missing_targets =
@@ -280,6 +304,17 @@ defmodule Defdo.TailwindBuilder.Dependencies do
     case missing_targets do
       [] -> {:ok, required_targets}
       missing -> {:error, missing}
+    end
+  end
+
+  defp targets_for_version(version) do
+    Map.get(@tailwind_v4_requirements, version, default_targets(version))
+  end
+
+  defp default_targets(version) when is_binary(version) do
+    cond do
+      String.starts_with?(version, "4.") -> @required_rust_targets
+      true -> []
     end
   end
 
@@ -325,5 +360,19 @@ defmodule Defdo.TailwindBuilder.Dependencies do
     Enum.reject(@required_tools, &is_installed?/1)
   end
 
-  defp is_installed?(program), do: not is_nil(System.find_executable(program))
+  defp is_installed?(program) do
+    case System.find_executable(program) do
+      nil ->
+        false
+
+      _ ->
+        # Running `--version` helps detect broken asdf shims with no version configured.
+        case System.cmd(program, ["--version"]) do
+          {_out, 0} -> true
+          {_out, _code} -> false
+        end
+    end
+  rescue
+    ErlangError -> false
+  end
 end

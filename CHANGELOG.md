@@ -3,12 +3,15 @@
 ## [Unreleased]
 
 ### Added
+- Automated Bun installation in `mix tailwind.install_deps` for Tailwind v4 builds
+- Enhanced Livebook deployment snippet with detailed Cloudflare R2 error reporting
 - Enhanced plugin patching support for Tailwind CSS v4
 - Improved plugin detection with regex pattern matching
 - Simplified module resolution approach
 - Updated tests to verify new patching behavior
 
 ### Changed
+- Tailwind v4 build steps automatically propagate `rustup` environment variables and patch `turbo.json`
 - Modified index.ts patching strategy to better handle plugin imports
 - Improved plugin path resolution for better compatibility with Tailwind CSS v4
 - Simplified patching approach with regex-based module resolution
@@ -29,4 +32,3 @@
 
 > Requires `npm` to build and compile.
 > Interested in see how it works see the [workflows](https://github.com/tailwindlabs/tailwindcss/tree/master/.github/workflows) in which this is inspired.
-
