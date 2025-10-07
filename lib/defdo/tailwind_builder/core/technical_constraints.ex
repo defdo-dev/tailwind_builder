@@ -79,7 +79,8 @@ defmodule Defdo.TailwindBuilder.Core.TechnicalConstraints do
 
   # Private functions - Technical validation only
 
-  defp can_cross_compile?(version, target_arch) when is_binary(version) and is_binary(target_arch) do
+  defp can_cross_compile?(version, target_arch)
+       when is_binary(version) and is_binary(target_arch) do
     ArchitectureMatrix.can_compile_for_target?(version, target_arch)
   end
 
@@ -87,7 +88,8 @@ defmodule Defdo.TailwindBuilder.Core.TechnicalConstraints do
     Capabilities.in_production_support?(version)
   end
 
-  defp can_use_package_manager?(version, manager) when is_binary(version) and is_binary(manager) do
+  defp can_use_package_manager?(version, manager)
+       when is_binary(version) and is_binary(manager) do
     constraints = Capabilities.get_version_constraints(version)
     required_tools = constraints.required_tools
     optional_tools = constraints.optional_tools
@@ -124,6 +126,7 @@ defmodule Defdo.TailwindBuilder.Core.TechnicalConstraints do
           target_architecture: target_arch,
           additional_setup: []
         })
+
       false ->
         Map.put(base_requirements, :cross_compilation, %{
           supported: false,
@@ -153,11 +156,13 @@ defmodule Defdo.TailwindBuilder.Core.TechnicalConstraints do
           package_json: %{dependency_section: "devDependencies"},
           standalone_js: %{requires_require_statements: true}
         }
+
       :v4 ->
         %{
           package_json: %{dependency_section: "dependencies"},
           index_ts: %{supports_dynamic_imports: true, requires_bundling_setup: true}
         }
+
       _ ->
         %{}
     end
@@ -171,8 +176,10 @@ defmodule Defdo.TailwindBuilder.Core.TechnicalConstraints do
     end
   end
 
-  defp validate_architecture_support(version, target_arch) when is_binary(version) and is_binary(target_arch) do
-    if can_cross_compile?(version, target_arch) or target_arch == ArchitectureMatrix.get_host_architecture() do
+  defp validate_architecture_support(version, target_arch)
+       when is_binary(version) and is_binary(target_arch) do
+    if can_cross_compile?(version, target_arch) or
+         target_arch == ArchitectureMatrix.get_host_architecture() do
       :ok
     else
       {:error, :architecture_not_supported}
@@ -186,19 +193,23 @@ defmodule Defdo.TailwindBuilder.Core.TechnicalConstraints do
     # In a real deployment, this would check actual tool availability
     case constraints.major_version do
       :unsupported -> {:error, :unknown_version}
-      _ -> :ok  # Assume tools are available for testing
+      # Assume tools are available for testing
+      _ -> :ok
     end
   end
 
-  defp validate_plugin_compatibility(version, plugins) when is_binary(version) and is_list(plugins) do
+  defp validate_plugin_compatibility(version, plugins)
+       when is_binary(version) and is_list(plugins) do
     constraints = Capabilities.get_version_constraints(version)
 
     case constraints.plugin_system do
       %{} when map_size(constraints.plugin_system) == 0 ->
         {:error, :plugin_system_not_available}
+
       _plugin_system ->
         :ok
     end
   end
+
   defp validate_plugin_compatibility(_version, nil), do: :ok
 end

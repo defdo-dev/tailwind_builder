@@ -46,19 +46,19 @@ defmodule Defdo.TailwindBuilder.GitHubBuilder do
          {:ok, build_id} <- generate_build_id(),
          {:ok, workflow_inputs} <- prepare_workflow_inputs(opts, build_id),
          {:ok, response} <- dispatch_workflow(config, workflow_inputs) do
-
       Telemetry.track_event(:github_build, :triggered, %{
         build_id: build_id,
         version: opts[:version],
         target_arch: opts[:target_arch]
       })
 
-      {:ok, %{
-        build_id: build_id,
-        github_run_id: response["run_id"],
-        status: :queued,
-        triggered_at: DateTime.utc_now()
-      }}
+      {:ok,
+       %{
+         build_id: build_id,
+         github_run_id: response["run_id"],
+         status: :queued,
+         triggered_at: DateTime.utc_now()
+       }}
     else
       {:error, reason} ->
         Logger.error("Failed to trigger GitHub build: #{inspect(reason)}")
@@ -73,17 +73,17 @@ defmodule Defdo.TailwindBuilder.GitHubBuilder do
     with {:ok, config} <- get_github_config(),
          {:ok, run_id} <- find_run_by_build_id(config, build_id),
          {:ok, run_data} <- fetch_workflow_run(config, run_id) do
-
       status = parse_github_status(run_data["status"], run_data["conclusion"])
 
-      {:ok, %{
-        build_id: build_id,
-        github_run_id: run_id,
-        status: status,
-        started_at: run_data["run_started_at"],
-        updated_at: run_data["updated_at"],
-        html_url: run_data["html_url"]
-      }}
+      {:ok,
+       %{
+         build_id: build_id,
+         github_run_id: run_id,
+         status: status,
+         started_at: run_data["run_started_at"],
+         updated_at: run_data["updated_at"],
+         html_url: run_data["html_url"]
+       }}
     else
       {:error, reason} -> {:error, reason}
     end
@@ -97,13 +97,13 @@ defmodule Defdo.TailwindBuilder.GitHubBuilder do
          {:ok, run_id} <- find_run_by_build_id(config, build_id),
          {:ok, artifacts} <- fetch_workflow_artifacts(config, run_id),
          {:ok, artifact} <- find_binary_artifact(artifacts) do
-
-      {:ok, %{
-        download_url: artifact["archive_download_url"],
-        artifact_name: artifact["name"],
-        size_bytes: artifact["size_in_bytes"],
-        expires_at: artifact["expires_at"]
-      }}
+      {:ok,
+       %{
+         download_url: artifact["archive_download_url"],
+         artifact_name: artifact["name"],
+         size_bytes: artifact["size_in_bytes"],
+         expires_at: artifact["expires_at"]
+       }}
     else
       {:error, reason} -> {:error, reason}
     end
@@ -115,20 +115,20 @@ defmodule Defdo.TailwindBuilder.GitHubBuilder do
   def list_recent_builds(limit \\ 20) do
     with {:ok, config} <- get_github_config(),
          {:ok, runs} <- fetch_recent_workflow_runs(config, limit) do
+      builds =
+        Enum.map(runs, fn run ->
+          build_id = extract_build_id_from_run(run)
+          status = parse_github_status(run["status"], run["conclusion"])
 
-      builds = Enum.map(runs, fn run ->
-        build_id = extract_build_id_from_run(run)
-        status = parse_github_status(run["status"], run["conclusion"])
-
-        %{
-          build_id: build_id,
-          github_run_id: run["id"],
-          status: status,
-          created_at: run["created_at"],
-          updated_at: run["updated_at"],
-          html_url: run["html_url"]
-        }
-      end)
+          %{
+            build_id: build_id,
+            github_run_id: run["id"],
+            status: status,
+            created_at: run["created_at"],
+            updated_at: run["updated_at"],
+            html_url: run["html_url"]
+          }
+        end)
 
       {:ok, builds}
     else
@@ -143,7 +143,6 @@ defmodule Defdo.TailwindBuilder.GitHubBuilder do
     with {:ok, config} <- get_github_config(),
          {:ok, run_id} <- find_run_by_build_id(config, build_id),
          {:ok, _response} <- cancel_workflow_run(config, run_id) do
-
       Telemetry.track_event(:github_build, :cancelled, %{build_id: build_id})
       {:ok, :cancelled}
     else
@@ -168,13 +167,14 @@ defmodule Defdo.TailwindBuilder.GitHubBuilder do
   end
 
   defp get_config_value(key, default \\ nil) do
-    env_key = case key do
-      :github_token -> "GITHUB_TOKEN"
-      :github_repo_owner -> "GITHUB_REPO_OWNER"
-      :github_repo_name -> "GITHUB_REPO_NAME"
-      :github_workflow_file -> "GITHUB_WORKFLOW_FILE"
-      _ -> key |> Atom.to_string() |> String.upcase()
-    end
+    env_key =
+      case key do
+        :github_token -> "GITHUB_TOKEN"
+        :github_repo_owner -> "GITHUB_REPO_OWNER"
+        :github_repo_name -> "GITHUB_REPO_NAME"
+        :github_workflow_file -> "GITHUB_WORKFLOW_FILE"
+        _ -> key |> Atom.to_string() |> String.upcase()
+      end
 
     System.get_env(env_key) ||
       Application.get_env(:tailwind_builder, key) ||
@@ -200,7 +200,8 @@ defmodule Defdo.TailwindBuilder.GitHubBuilder do
   end
 
   defp dispatch_workflow(config, inputs) do
-    url = "#{@github_api_url}/repos/#{config.repo_owner}/#{config.repo_name}/actions/workflows/#{config.workflow_file}/dispatches"
+    url =
+      "#{@github_api_url}/repos/#{config.repo_owner}/#{config.repo_name}/actions/workflows/#{config.workflow_file}/dispatches"
 
     headers = [
       {"Authorization", "Bearer #{config.token}"},
@@ -208,10 +209,11 @@ defmodule Defdo.TailwindBuilder.GitHubBuilder do
       {"Content-Type", "application/json"}
     ]
 
-    body = Jason.encode!(%{
-      "ref" => "main",
-      "inputs" => inputs
-    })
+    body =
+      Jason.encode!(%{
+        "ref" => "main",
+        "inputs" => inputs
+      })
 
     case Req.post(url, body: body, headers: headers) do
       {:ok, %Req.Response{status: 204}} ->
@@ -231,9 +233,10 @@ defmodule Defdo.TailwindBuilder.GitHubBuilder do
   defp find_run_by_build_id(config, build_id) do
     # GitHub doesn't provide direct lookup, so we search recent runs
     with {:ok, runs} <- fetch_recent_workflow_runs(config, 50) do
-      run = Enum.find(runs, fn run ->
-        extract_build_id_from_run(run) == build_id
-      end)
+      run =
+        Enum.find(runs, fn run ->
+          extract_build_id_from_run(run) == build_id
+        end)
 
       case run do
         nil -> {:error, "Build not found: #{build_id}"}
@@ -249,13 +252,15 @@ defmodule Defdo.TailwindBuilder.GitHubBuilder do
       nil ->
         # Fallback: try to extract from run name or other metadata
         "unknown-#{run["id"]}"
+
       build_id ->
         build_id
     end
   end
 
   defp fetch_workflow_run(config, run_id) do
-    url = "#{@github_api_url}/repos/#{config.repo_owner}/#{config.repo_name}/actions/runs/#{run_id}"
+    url =
+      "#{@github_api_url}/repos/#{config.repo_owner}/#{config.repo_name}/actions/runs/#{run_id}"
 
     headers = [
       {"Authorization", "Bearer #{config.token}"},
@@ -275,7 +280,8 @@ defmodule Defdo.TailwindBuilder.GitHubBuilder do
   end
 
   defp fetch_recent_workflow_runs(config, limit) do
-    url = "#{@github_api_url}/repos/#{config.repo_owner}/#{config.repo_name}/actions/workflows/#{config.workflow_file}/runs"
+    url =
+      "#{@github_api_url}/repos/#{config.repo_owner}/#{config.repo_name}/actions/workflows/#{config.workflow_file}/runs"
 
     headers = [
       {"Authorization", "Bearer #{config.token}"},
@@ -297,7 +303,8 @@ defmodule Defdo.TailwindBuilder.GitHubBuilder do
   end
 
   defp fetch_workflow_artifacts(config, run_id) do
-    url = "#{@github_api_url}/repos/#{config.repo_owner}/#{config.repo_name}/actions/runs/#{run_id}/artifacts"
+    url =
+      "#{@github_api_url}/repos/#{config.repo_owner}/#{config.repo_name}/actions/runs/#{run_id}/artifacts"
 
     headers = [
       {"Authorization", "Bearer #{config.token}"},
@@ -318,11 +325,14 @@ defmodule Defdo.TailwindBuilder.GitHubBuilder do
 
   defp find_binary_artifact(artifacts) do
     # Look for artifacts that contain compiled binaries
-    binary_artifact = Enum.find(artifacts, fn artifact ->
-      name = artifact["name"]
-      String.contains?(name, "tailwindcss") and
-      (String.contains?(name, "linux") or String.contains?(name, "darwin") or String.contains?(name, "win32"))
-    end)
+    binary_artifact =
+      Enum.find(artifacts, fn artifact ->
+        name = artifact["name"]
+
+        String.contains?(name, "tailwindcss") and
+          (String.contains?(name, "linux") or String.contains?(name, "darwin") or
+             String.contains?(name, "win32"))
+      end)
 
     case binary_artifact do
       nil -> {:error, "Binary artifact not found"}
@@ -331,7 +341,8 @@ defmodule Defdo.TailwindBuilder.GitHubBuilder do
   end
 
   defp cancel_workflow_run(config, run_id) do
-    url = "#{@github_api_url}/repos/#{config.repo_owner}/#{config.repo_name}/actions/runs/#{run_id}/cancel"
+    url =
+      "#{@github_api_url}/repos/#{config.repo_owner}/#{config.repo_name}/actions/runs/#{run_id}/cancel"
 
     headers = [
       {"Authorization", "Bearer #{config.token}"},

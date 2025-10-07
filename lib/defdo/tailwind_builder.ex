@@ -64,11 +64,11 @@ defmodule Defdo.TailwindBuilder do
     config = DefaultConfigProvider
     expected_checksum = get_expected_checksum(tailwind_version, config)
 
-    case Downloader.download_and_extract([
-      version: tailwind_version,
-      destination: tailwind_src,
-      expected_checksum: expected_checksum
-    ]) do
+    case Downloader.download_and_extract(
+           version: tailwind_version,
+           destination: tailwind_src,
+           expected_checksum: expected_checksum
+         ) do
       {:ok, _download_result} ->
         Logger.debug("\nExtracted files in #{tailwind_src}:")
 
@@ -114,6 +114,7 @@ defmodule Defdo.TailwindBuilder do
           {:ok, version} ->
             Logger.info("Latest #{package_name} version: #{version}")
             {:ok, version}
+
           {:error, reason} ->
             Logger.warning("Failed to fetch latest #{package_name} version: #{inspect(reason)}")
             {:error, reason}
@@ -182,11 +183,11 @@ defmodule Defdo.TailwindBuilder do
   def build(tailwind_version \\ @tailwind_latest, tailwind_src \\ File.cwd!(), debug \\ false) do
     Logger.info("Building Tailwind v#{tailwind_version} using new modular architecture")
 
-    case Builder.compile([
-      version: tailwind_version,
-      source_path: tailwind_src,
-      debug: debug
-    ]) do
+    case Builder.compile(
+           version: tailwind_version,
+           source_path: tailwind_src,
+           debug: debug
+         ) do
       {:ok, build_result} ->
         # Maintain the same result format as the original API
         result = %{
@@ -202,13 +203,20 @@ defmodule Defdo.TailwindBuilder do
         case error do
           {:missing_tools, tools} ->
             {:error, "Ensure that `#{Enum.join(tools, "`, `")}` is installed."}
+
           {:command_failed, code, output} ->
             Logger.error("Command failed at step #{inspect(step)} with exit code #{code}")
             Logger.error("Output: #{String.slice(output, 0, 1000)}")
-            {:error, "Build failed at step #{inspect(step)} with exit code #{code}. Check logs for details."}
+
+            {:error,
+             "Build failed at step #{inspect(step)} with exit code #{code}. Check logs for details."}
+
           {message, code} when is_integer(code) ->
             Logger.error("Step #{inspect(step)} failed: #{inspect(message)}")
-            {:error, "There is an error detected during the step #{inspect(step)}. with exit code: #{code}, check logs to detect issues."}
+
+            {:error,
+             "There is an error detected during the step #{inspect(step)}. with exit code: #{code}, check logs to detect issues."}
+
           other ->
             Logger.error("Build failed with error: #{inspect(other)}")
             {:error, "Build failed: #{inspect(other)}"}
@@ -221,16 +229,20 @@ defmodule Defdo.TailwindBuilder do
 
   Migrated to use the new Deployer module.
   """
-  def deploy_r2(tailwind_version \\ @tailwind_latest, tailwind_src \\ File.cwd!(), bucket \\ "defdo") do
+  def deploy_r2(
+        tailwind_version \\ @tailwind_latest,
+        tailwind_src \\ File.cwd!(),
+        bucket \\ "defdo"
+      ) do
     Logger.info("Deploying Tailwind v#{tailwind_version} using new modular architecture")
 
-    case Deployer.deploy([
-      version: tailwind_version,
-      source_path: tailwind_src,
-      destination: :r2,
-      bucket: bucket,
-      prefix: "tailwind_cli_daisyui"
-    ]) do
+    case Deployer.deploy(
+           version: tailwind_version,
+           source_path: tailwind_src,
+           destination: :r2,
+           bucket: bucket,
+           prefix: "tailwind_cli_daisyui"
+         ) do
       {:ok, deploy_result} ->
         Logger.info("Deployment successful: #{deploy_result.binaries_deployed} files deployed")
         # Maintain the same result as the original API: list of upload responses
@@ -253,16 +265,17 @@ defmodule Defdo.TailwindBuilder do
   """
   def add_plugin(plugin, tailwind_version \\ @tailwind_latest, root_path \\ File.cwd!())
 
-  def add_plugin(plugin_name, tailwind_version, root_path) when is_map_key(@available_plugins, plugin_name) do
+  def add_plugin(plugin_name, tailwind_version, root_path)
+      when is_map_key(@available_plugins, plugin_name) do
     Logger.info("Applying plugin #{plugin_name} using new modular architecture")
 
     plugin_spec = @available_plugins[plugin_name]
 
-    case PluginManager.apply_plugin(plugin_spec, [
-      version: tailwind_version,
-      base_path: root_path,
-      plugin_name: plugin_name
-    ]) do
+    case PluginManager.apply_plugin(plugin_spec,
+           version: tailwind_version,
+           base_path: root_path,
+           plugin_name: plugin_name
+         ) do
       {:ok, plugin_result} ->
         # Return list of results like the original API
         plugin_result.patch_results
@@ -276,10 +289,10 @@ defmodule Defdo.TailwindBuilder do
   def add_plugin(plugin, tailwind_version, root_path) when is_map_key(plugin, "version") do
     Logger.info("Applying custom plugin using new modular architecture")
 
-    case PluginManager.apply_plugin(plugin, [
-      version: tailwind_version,
-      base_path: root_path
-    ]) do
+    case PluginManager.apply_plugin(plugin,
+           version: tailwind_version,
+           base_path: root_path
+         ) do
       {:ok, plugin_result} ->
         plugin_result.patch_results
 
@@ -291,12 +304,14 @@ defmodule Defdo.TailwindBuilder do
 
             The version must be a valid `package.json` entry.
             """
+
           {:error, {:invalid_version_format, _}} ->
             raise """
             Be sure that you have a valid values
 
             The version must be a valid `package.json` entry.
             """
+
           other ->
             Logger.error("Plugin application failed: #{inspect(other)}")
             {:error, other}
@@ -328,11 +343,17 @@ defmodule Defdo.TailwindBuilder do
 
       {:error, _} ->
         # Fallback to original logic
-        base_path = if Version.compare(tailwind_version, "4.0.0") in [:eq, :gt] do
-          Path.join([tailwind_src, "tailwindcss-#{tailwind_version}", "packages", "@tailwindcss-standalone"])
-        else
-          Path.join([tailwind_src, "tailwindcss-#{tailwind_version}", "standalone-cli"])
-        end
+        base_path =
+          if Version.compare(tailwind_version, "4.0.0") in [:eq, :gt] do
+            Path.join([
+              tailwind_src,
+              "tailwindcss-#{tailwind_version}",
+              "packages",
+              "@tailwindcss-standalone"
+            ])
+          else
+            Path.join([tailwind_src, "tailwindcss-#{tailwind_version}", "standalone-cli"])
+          end
 
         Path.join([base_path, relative_path, filename])
     end
@@ -350,11 +371,17 @@ defmodule Defdo.TailwindBuilder do
   """
   def standalone_cli_path(tailwind_src, tailwind_version) do
     case Builder.get_build_paths(tailwind_src, tailwind_version) do
-      {:ok, paths} -> paths.standalone_root
+      {:ok, paths} ->
+        paths.standalone_root
+
       {:error, _} ->
         # Fallback to original logic
         if Version.compare(tailwind_version, "4.0.0") in [:eq, :gt] do
-          Path.join([tailwind_src, "tailwindcss-#{tailwind_version}", "packages/@tailwindcss-standalone"])
+          Path.join([
+            tailwind_src,
+            "tailwindcss-#{tailwind_version}",
+            "packages/@tailwindcss-standalone"
+          ])
         else
           Path.join([tailwind_src, "tailwindcss-#{tailwind_version}", "standalone-cli"])
         end
@@ -366,7 +393,9 @@ defmodule Defdo.TailwindBuilder do
   """
   def tailwind_path(tailwind_src, tailwind_version) do
     case Builder.get_build_paths(tailwind_src, tailwind_version) do
-      {:ok, paths} -> paths.tailwind_root
+      {:ok, paths} ->
+        paths.tailwind_root
+
       {:error, _} ->
         # Fallback to original logic
         Path.join([tailwind_src, "tailwindcss-#{tailwind_version}"])
@@ -436,11 +465,12 @@ defmodule Defdo.TailwindBuilder do
   defp patch_content_legacy(content, string_to_split_on, patch_text, spacer, add_comma \\ true) do
     case split_with_self_legacy(content, string_to_split_on) do
       {beginning, splitter, rest} ->
-        order_parts = if add_comma do
-          [beginning, splitter, spacer, patch_text, ?,, ?\n, rest]
-        else
-          [beginning, splitter, spacer, patch_text, ?\n, rest]
-        end
+        order_parts =
+          if add_comma do
+            [beginning, splitter, spacer, patch_text, ?,, ?\n, rest]
+          else
+            [beginning, splitter, spacer, patch_text, ?\n, rest]
+          end
 
         new_content = IO.iodata_to_binary(order_parts)
         {:ok, new_content}

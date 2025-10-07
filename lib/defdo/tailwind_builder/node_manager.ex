@@ -41,8 +41,10 @@ defmodule Defdo.TailwindBuilder.NodeManager do
   # @node_states [:available, :busy, :maintenance, :offline]
 
   # Default configuration
-  @default_heartbeat_timeout 60_000  # 1 minute
-  @default_health_check_interval 30_000  # 30 seconds
+  # 1 minute
+  @default_heartbeat_timeout 60_000
+  # 30 seconds
+  @default_health_check_interval 30_000
 
   ## Public API
 
@@ -112,7 +114,8 @@ defmodule Defdo.TailwindBuilder.NodeManager do
       node_stats: %{},
       config: %{
         heartbeat_timeout: Keyword.get(opts, :heartbeat_timeout, @default_heartbeat_timeout),
-        health_check_interval: Keyword.get(opts, :health_check_interval, @default_health_check_interval)
+        health_check_interval:
+          Keyword.get(opts, :health_check_interval, @default_health_check_interval)
       }
     }
 
@@ -145,10 +148,7 @@ defmodule Defdo.TailwindBuilder.NodeManager do
 
         Logger.info("Node registered: #{node_id} (#{node.architecture})")
 
-        {:reply, {:ok, node_id}, %{state |
-          nodes: updated_nodes,
-          node_stats: updated_stats
-        }}
+        {:reply, {:ok, node_id}, %{state | nodes: updated_nodes, node_stats: updated_stats}}
 
       {:error, reason} ->
         {:reply, {:error, reason}, state}
@@ -159,6 +159,7 @@ defmodule Defdo.TailwindBuilder.NodeManager do
     case find_best_node(state.nodes, architecture, requirements) do
       {:ok, node} ->
         {:reply, {:ok, node}, state}
+
       {:error, reason} ->
         {:reply, {:error, reason}, state}
     end
@@ -185,12 +186,11 @@ defmodule Defdo.TailwindBuilder.NodeManager do
                   build_request: build_request,
                   started_at: DateTime.utc_now()
                 }
+
                 updated_jobs = Map.put(state.active_jobs, job_id, job_info)
 
-                {:reply, {:ok, job_id}, %{state |
-                  nodes: updated_nodes,
-                  active_jobs: updated_jobs
-                }}
+                {:reply, {:ok, job_id},
+                 %{state | nodes: updated_nodes, active_jobs: updated_jobs}}
 
               {:error, reason} ->
                 {:reply, {:error, reason}, state}
@@ -224,17 +224,15 @@ defmodule Defdo.TailwindBuilder.NodeManager do
         updated_stats = Map.delete(state.node_stats, node_id)
 
         # Cancel any active jobs on this node
-        updated_jobs = state.active_jobs
-        |> Enum.reject(fn {_job_id, job_info} -> job_info.node_id == node_id end)
-        |> Enum.into(%{})
+        updated_jobs =
+          state.active_jobs
+          |> Enum.reject(fn {_job_id, job_info} -> job_info.node_id == node_id end)
+          |> Enum.into(%{})
 
         Logger.info("Node deregistered: #{node_id}")
 
-        {:reply, :ok, %{state |
-          nodes: updated_nodes,
-          node_stats: updated_stats,
-          active_jobs: updated_jobs
-        }}
+        {:reply, :ok,
+         %{state | nodes: updated_nodes, node_stats: updated_stats, active_jobs: updated_jobs}}
     end
   end
 
@@ -245,19 +243,21 @@ defmodule Defdo.TailwindBuilder.NodeManager do
         {:noreply, state}
 
       node ->
-        updated_node = %{node |
-          last_heartbeat: DateTime.utc_now(),
-          status: Map.get(status_info, "status", node.status),
-          current_jobs: Map.get(status_info, "current_jobs", node.current_jobs)
+        updated_node = %{
+          node
+          | last_heartbeat: DateTime.utc_now(),
+            status: Map.get(status_info, "status", node.status),
+            current_jobs: Map.get(status_info, "current_jobs", node.current_jobs)
         }
 
         updated_nodes = Map.put(state.nodes, node_id, updated_node)
 
         # Update node stats if provided
-        updated_stats = case Map.get(status_info, "system_info") do
-          nil -> state.node_stats
-          system_info -> update_node_system_stats(state.node_stats, node_id, system_info)
-        end
+        updated_stats =
+          case Map.get(status_info, "system_info") do
+            nil -> state.node_stats
+            system_info -> update_node_system_stats(state.node_stats, node_id, system_info)
+          end
 
         {:noreply, %{state | nodes: updated_nodes, node_stats: updated_stats}}
     end
@@ -268,19 +268,21 @@ defmodule Defdo.TailwindBuilder.NodeManager do
     now = DateTime.utc_now()
     timeout_ms = state.config.heartbeat_timeout
 
-    {offline_nodes, active_nodes} = state.nodes
-    |> Enum.split_with(fn {_node_id, node} ->
-      DateTime.diff(now, node.last_heartbeat, :millisecond) > timeout_ms
-    end)
+    {offline_nodes, active_nodes} =
+      state.nodes
+      |> Enum.split_with(fn {_node_id, node} ->
+        DateTime.diff(now, node.last_heartbeat, :millisecond) > timeout_ms
+      end)
 
     # Mark offline nodes
-    updated_nodes = active_nodes
-    |> Enum.into(%{})
-    |> Map.merge(
-      offline_nodes
-      |> Enum.map(fn {node_id, node} -> {node_id, %{node | status: :offline}} end)
+    updated_nodes =
+      active_nodes
       |> Enum.into(%{})
-    )
+      |> Map.merge(
+        offline_nodes
+        |> Enum.map(fn {node_id, node} -> {node_id, %{node | status: :offline}} end)
+        |> Enum.into(%{})
+      )
 
     # Log offline nodes
     Enum.each(offline_nodes, fn {node_id, _node} ->
@@ -327,6 +329,7 @@ defmodule Defdo.TailwindBuilder.NodeManager do
           capabilities: node_info.capabilities,
           max_concurrent: Map.get(node_info, :max_concurrent, 1)
         }
+
         {:ok, validated}
 
       {:error, missing_fields} ->
@@ -335,9 +338,10 @@ defmodule Defdo.TailwindBuilder.NodeManager do
   end
 
   defp check_required_fields(map, required_fields) do
-    missing = Enum.filter(required_fields, fn field ->
-      not Map.has_key?(map, field) or is_nil(Map.get(map, field))
-    end)
+    missing =
+      Enum.filter(required_fields, fn field ->
+        not Map.has_key?(map, field) or is_nil(Map.get(map, field))
+      end)
 
     case missing do
       [] -> :ok
@@ -346,14 +350,15 @@ defmodule Defdo.TailwindBuilder.NodeManager do
   end
 
   defp find_best_node(nodes, architecture, requirements) do
-    candidates = nodes
-    |> Map.values()
-    |> Enum.filter(fn node ->
-      node.architecture == architecture and
-      node.status == :available and
-      can_accept_job?(node) and
-      meets_requirements?(node, requirements)
-    end)
+    candidates =
+      nodes
+      |> Map.values()
+      |> Enum.filter(fn node ->
+        node.architecture == architecture and
+          node.status == :available and
+          can_accept_job?(node) and
+          meets_requirements?(node, requirements)
+      end)
 
     case candidates do
       [] ->
@@ -361,8 +366,9 @@ defmodule Defdo.TailwindBuilder.NodeManager do
 
       nodes_list ->
         # Score nodes based on load, performance, etc.
-        best_node = nodes_list
-        |> Enum.max_by(&score_node/1)
+        best_node =
+          nodes_list
+          |> Enum.max_by(&score_node/1)
 
         {:ok, best_node}
     end
@@ -383,7 +389,7 @@ defmodule Defdo.TailwindBuilder.NodeManager do
 
   defp score_node(node) do
     # Simple scoring based on load and success rate
-    load_factor = 1.0 - (node.current_jobs / node.max_concurrent)
+    load_factor = 1.0 - node.current_jobs / node.max_concurrent
     success_factor = node.success_rate
 
     load_factor * 0.6 + success_factor * 0.4
@@ -421,33 +427,40 @@ defmodule Defdo.TailwindBuilder.NodeManager do
 
   defp update_node_completion_stats(nodes, node_id, result, duration) do
     case Map.get(nodes, node_id) do
-      nil -> nodes
+      nil ->
+        nodes
 
       node ->
-        updated_node = case result do
-          :success ->
-            new_total = node.total_builds + 1
-            new_avg_time = case node.average_build_time do
-              nil -> duration
-              avg -> (avg * node.total_builds + duration) / new_total
-            end
+        updated_node =
+          case result do
+            :success ->
+              new_total = node.total_builds + 1
 
-            %{node |
-              total_builds: new_total,
-              average_build_time: new_avg_time,
-              success_rate: calculate_success_rate(new_total, new_total - node.total_builds + 1),
-              current_jobs: max(0, node.current_jobs - 1)
-            }
+              new_avg_time =
+                case node.average_build_time do
+                  nil -> duration
+                  avg -> (avg * node.total_builds + duration) / new_total
+                end
 
-          :failure ->
-            new_total = node.total_builds + 1
+              %{
+                node
+                | total_builds: new_total,
+                  average_build_time: new_avg_time,
+                  success_rate:
+                    calculate_success_rate(new_total, new_total - node.total_builds + 1),
+                  current_jobs: max(0, node.current_jobs - 1)
+              }
 
-            %{node |
-              total_builds: new_total,
-              success_rate: calculate_success_rate(new_total, new_total - node.total_builds),
-              current_jobs: max(0, node.current_jobs - 1)
-            }
-        end
+            :failure ->
+              new_total = node.total_builds + 1
+
+              %{
+                node
+                | total_builds: new_total,
+                  success_rate: calculate_success_rate(new_total, new_total - node.total_builds),
+                  current_jobs: max(0, node.current_jobs - 1)
+              }
+          end
 
         Map.put(nodes, node_id, updated_node)
     end
@@ -463,13 +476,15 @@ defmodule Defdo.TailwindBuilder.NodeManager do
 
   defp update_node_system_stats(stats_map, node_id, system_info) do
     case Map.get(stats_map, node_id) do
-      nil -> stats_map
+      nil ->
+        stats_map
 
       stats ->
-        updated_stats = %{stats |
-          system_load: Map.get(system_info, "load", stats.system_load),
-          memory_usage: Map.get(system_info, "memory", stats.memory_usage),
-          disk_space: Map.get(system_info, "disk", stats.disk_space)
+        updated_stats = %{
+          stats
+          | system_load: Map.get(system_info, "load", stats.system_load),
+            memory_usage: Map.get(system_info, "memory", stats.memory_usage),
+            disk_space: Map.get(system_info, "disk", stats.disk_space)
         }
 
         Map.put(stats_map, node_id, updated_stats)

@@ -121,7 +121,6 @@ defmodule Defdo.TailwindBuilder.SmartBuilder do
     end
   end
 
-
   defp execute_build_strategy(:local, opts) do
     Logger.info("Building locally (native compilation)")
     Builder.compile(opts)
@@ -137,7 +136,6 @@ defmodule Defdo.TailwindBuilder.SmartBuilder do
     GitHubBuilder.trigger_build(opts)
   end
 
-
   defp handle_build_failure(:local, reason, opts) do
     if RemoteBuilder.coordinator_available?() and opts[:auto_fallback] != false do
       Logger.info("Local build failed, attempting remote fallback")
@@ -152,14 +150,14 @@ defmodule Defdo.TailwindBuilder.SmartBuilder do
     {:error, reason}
   end
 
-
   defp get_local_capabilities do
     host_arch = Core.get_host_architecture()
 
     %{
       native_architecture: host_arch,
       supported_versions: ["3.x", "4.x"],
-      cross_compilation: false,  # We removed this
+      # We removed this
+      cross_compilation: false,
       estimated_build_time: %{
         "v3" => "60s",
         "v4" => "90s"

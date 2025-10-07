@@ -1,12 +1,12 @@
 defmodule Defdo.TailwindBuilder.ConfigProvider do
   @moduledoc """
   Behaviour para inyección de configuración externa.
-  
+
   Permite a las capas superiores inyectar configuraciones de negocio
   sin que el Core tenga que conocer políticas específicas.
-  
+
   ## Ejemplos de implementación
-  
+
   ### Configuración desde archivo
       defmodule MyApp.FileConfigProvider do
         @behaviour Defdo.TailwindBuilder.ConfigProvider
@@ -22,7 +22,7 @@ defmodule Defdo.TailwindBuilder.ConfigProvider do
           end
         end
       end
-  
+
   ### Configuración desde base de datos
       defmodule MyApp.DatabaseConfigProvider do
         @behaviour Defdo.TailwindBuilder.ConfigProvider
@@ -54,46 +54,46 @@ defmodule Defdo.TailwindBuilder.ConfigProvider do
   Obtiene configuración específica de deployment
   """
   @callback get_deployment_config(target :: atom()) :: %{
-    bucket: String.t(),
-    prefix: String.t(),
-    region: String.t()
-  }
+              bucket: String.t(),
+              prefix: String.t(),
+              region: String.t()
+            }
 
   @doc """
   Obtiene límites de operación (rate limiting, timeouts, etc.)
   """
   @callback get_operation_limits() :: %{
-    max_concurrent_downloads: pos_integer(),
-    download_timeout: pos_integer(),
-    build_timeout: pos_integer(),
-    max_file_size: pos_integer()
-  }
+              max_concurrent_downloads: pos_integer(),
+              download_timeout: pos_integer(),
+              build_timeout: pos_integer(),
+              max_file_size: pos_integer()
+            }
 
   @doc """
   Obtiene políticas de construcción/compilación
   """
   @callback get_build_policies() :: %{
-    allow_experimental_features: boolean(),
-    skip_non_critical_validations: boolean(),
-    enable_debug_symbols: boolean(),
-    verbose_logging: boolean()
-  }
+              allow_experimental_features: boolean(),
+              skip_non_critical_validations: boolean(),
+              enable_debug_symbols: boolean(),
+              verbose_logging: boolean()
+            }
 
   @doc """
   Obtiene políticas de deployment
   """
   @callback get_deployment_policies() :: %{
-    skip_production_checks: boolean(),
-    allow_overwrite: boolean(),
-    backup_existing: boolean(),
-    notify_on_deploy: boolean()
-  }
+              skip_production_checks: boolean(),
+              allow_overwrite: boolean(),
+              backup_existing: boolean(),
+              notify_on_deploy: boolean()
+            }
 
   @doc """
   Valida si una operación está permitida por políticas de negocio
   """
-  @callback validate_operation_policy(operation :: atom(), params :: map()) :: 
-    :ok | {:warning, String.t()} | {:error, term()}
+  @callback validate_operation_policy(operation :: atom(), params :: map()) ::
+              :ok | {:warning, String.t()} | {:error, term()}
 
   @optional_callbacks [
     get_known_checksums: 0,

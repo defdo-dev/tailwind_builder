@@ -19,7 +19,8 @@ config :logger, level: :debug
 
 # Req configuration for development
 config :req,
-  timeout: 60_000,  # Longer timeout for development
+  # Longer timeout for development
+  timeout: 60_000,
   retry: [
     max_retries: 2,
     retry_delay: fn attempt -> 100 * attempt end

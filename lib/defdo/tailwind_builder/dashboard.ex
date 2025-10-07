@@ -1,7 +1,7 @@
 defmodule Defdo.TailwindBuilder.Dashboard do
   @moduledoc """
   Simple dashboard for monitoring TailwindBuilder telemetry in real-time.
-  
+
   Provides:
   - Real-time metrics visualization
   - Operation status monitoring  
@@ -18,7 +18,7 @@ defmodule Defdo.TailwindBuilder.Dashboard do
   def generate_summary(opts \\ []) do
     time_window = Keyword.get(opts, :time_window_minutes, 60)
     format = Keyword.get(opts, :format, :text)
-    
+
     summary = %{
       timestamp: DateTime.utc_now(),
       time_window_minutes: time_window,
@@ -28,7 +28,7 @@ defmodule Defdo.TailwindBuilder.Dashboard do
       errors: get_errors_summary(),
       active_spans: Telemetry.get_active_spans()
     }
-    
+
     case format do
       :json -> Jason.encode!(summary, pretty: true)
       :text -> format_text_dashboard(summary)
@@ -43,7 +43,7 @@ defmodule Defdo.TailwindBuilder.Dashboard do
   """
   def get_system_health do
     telemetry_stats = Telemetry.get_stats()
-    
+
     %{
       telemetry_enabled: Map.get(telemetry_stats, :enabled, false),
       active_operations: Map.get(telemetry_stats, :active_spans, 0),
@@ -127,7 +127,7 @@ defmodule Defdo.TailwindBuilder.Dashboard do
   """
   def display_live_dashboard(refresh_seconds \\ 10) do
     clear_screen()
-    
+
     Stream.interval(refresh_seconds * 1000)
     |> Enum.each(fn _ ->
       clear_screen()
@@ -150,11 +150,14 @@ defmodule Defdo.TailwindBuilder.Dashboard do
         unless silent do
           IO.puts("Dashboard exported to #{filename}")
         end
+
         :ok
+
       {:error, reason} ->
         unless silent do
           IO.puts("Failed to export dashboard: #{reason}")
         end
+
         {:error, reason}
     end
   end
@@ -302,11 +305,14 @@ defmodule Defdo.TailwindBuilder.Dashboard do
   end
 
   defp format_top_errors([]), do: "None"
+
   defp format_top_errors(errors) do
     errors |> Enum.take(3) |> Enum.map_join(", ", & &1.type)
   end
 
-  defp format_active_spans([]), do: "║ No active operations                                                          ║"
+  defp format_active_spans([]),
+    do: "║ No active operations                                                          ║"
+
   defp format_active_spans(spans) do
     spans
     |> Enum.take(5)
@@ -317,11 +323,13 @@ defmodule Defdo.TailwindBuilder.Dashboard do
   end
 
   defp format_active_spans_html([]), do: "<p>No active operations</p>"
+
   defp format_active_spans_html(spans) do
-    rows = Enum.map(spans, fn span ->
-      "<tr><td>#{span.operation}</td><td>#{span.id}</td><td>#{span.duration}ms</td></tr>"
-    end)
-    
+    rows =
+      Enum.map(spans, fn span ->
+        "<tr><td>#{span.operation}</td><td>#{span.id}</td><td>#{span.duration}ms</td></tr>"
+      end)
+
     "<table><tr><th>Operation</th><th>ID</th><th>Duration</th></tr>#{Enum.join(rows)}</table>"
   end
 

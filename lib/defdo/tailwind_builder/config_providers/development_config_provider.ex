@@ -1,7 +1,7 @@
 defmodule Defdo.TailwindBuilder.ConfigProviders.DevelopmentConfigProvider do
   @moduledoc """
   ConfigProvider optimized for development environments.
-  
+
   Features:
   - More lenient version policies (allows experimental versions)
   - Faster timeout settings for development speed
@@ -9,7 +9,7 @@ defmodule Defdo.TailwindBuilder.ConfigProviders.DevelopmentConfigProvider do
   - More permissive plugin support
   - Local development optimizations
   """
-  
+
   @behaviour Defdo.TailwindBuilder.ConfigProvider
 
   # Extended plugin support for development
@@ -24,7 +24,7 @@ defmodule Defdo.TailwindBuilder.ConfigProviders.DevelopmentConfigProvider do
     "daisyui_v5" => %{
       "version" => ~s["daisyui": "^5.0.49"],
       "description" => "Semantic component classes for Tailwind CSS v5",
-      "npm_name" => "daisyui", 
+      "npm_name" => "daisyui",
       "compatible_versions" => ["4.x"]
     },
     "@tailwindcss/typography" => %{
@@ -67,7 +67,7 @@ defmodule Defdo.TailwindBuilder.ConfigProviders.DevelopmentConfigProvider do
     Application.get_env(:tailwind_builder, :development_plugins, @development_supported_plugins)
   end
 
-  @impl true  
+  @impl true
   def get_known_checksums do
     Application.get_env(:tailwind_builder, :development_checksums, @development_checksums)
   end
@@ -78,11 +78,11 @@ defmodule Defdo.TailwindBuilder.ConfigProviders.DevelopmentConfigProvider do
       # Allow all beta/alpha versions in development
       String.contains?(version, "beta") or String.contains?(version, "alpha") ->
         :allowed
-      
+
       # Allow all stable versions with known checksums
       Map.has_key?(@development_checksums, version) ->
         :allowed
-      
+
       # Even unknown versions are allowed in development for experimentation
       true ->
         :allowed
@@ -93,12 +93,18 @@ defmodule Defdo.TailwindBuilder.ConfigProviders.DevelopmentConfigProvider do
   def get_operation_limits do
     %{
       # Faster timeouts for development iteration
-      download_timeout: 30_000,      # 30 seconds (faster than production)
-      build_timeout: 120_000,        # 2 minutes (faster iteration)
-      max_file_size: 200_000_000,    # 200MB (generous for development)
-      max_concurrent_downloads: 5,   # Allow more concurrent operations
-      retry_attempts: 2,             # Fewer retries for faster feedback
-      cache_ttl: 300                 # 5 minutes cache (shorter for development)
+      # 30 seconds (faster than production)
+      download_timeout: 30_000,
+      # 2 minutes (faster iteration)
+      build_timeout: 120_000,
+      # 200MB (generous for development)
+      max_file_size: 200_000_000,
+      # Allow more concurrent operations
+      max_concurrent_downloads: 5,
+      # Fewer retries for faster feedback
+      retry_attempts: 2,
+      # 5 minutes cache (shorter for development)
+      cache_ttl: 300
     }
   end
 
@@ -108,27 +114,34 @@ defmodule Defdo.TailwindBuilder.ConfigProviders.DevelopmentConfigProvider do
       :local ->
         %{
           destination: "/tmp/tailwind_dev_builds",
-          cleanup_after: false,        # Keep files for debugging
-          validate_binaries: false,    # Skip validation for speed
+          # Keep files for debugging
+          cleanup_after: false,
+          # Skip validation for speed
+          validate_binaries: false,
           generate_manifest: true
         }
-      
+
       :test ->
         %{
           destination: "/tmp/tailwind_test_builds",
-          cleanup_after: true,         # Clean up test files
-          validate_binaries: false,    # Skip validation for speed
-          generate_manifest: false     # Skip manifest for tests
+          # Clean up test files
+          cleanup_after: true,
+          # Skip validation for speed
+          validate_binaries: false,
+          # Skip manifest for tests
+          generate_manifest: false
         }
-      
+
       :r2 ->
         %{
           bucket: "tailwind-dev-builds",
           prefix: "development/",
-          public_access: true,         # Allow public access for dev sharing
-          cache_control: "no-cache"    # No caching for development
+          # Allow public access for dev sharing
+          public_access: true,
+          # No caching for development
+          cache_control: "no-cache"
         }
-      
+
       :s3 ->
         %{
           bucket: "tailwind-development",
@@ -136,7 +149,7 @@ defmodule Defdo.TailwindBuilder.ConfigProviders.DevelopmentConfigProvider do
           storage_class: "STANDARD",
           public_access: true
         }
-      
+
       _ ->
         %{
           destination: "/tmp/tailwind_unknown",
@@ -166,10 +179,14 @@ defmodule Defdo.TailwindBuilder.ConfigProviders.DevelopmentConfigProvider do
       # Development deployment policies
       skip_production_checks: true,
       allow_overwrite: true,
-      backup_existing: false,        # No backup needed in dev
-      notify_on_deploy: false,       # No notifications for dev deploys
-      auto_cleanup_old: true,        # Clean up old dev builds
-      max_versions_kept: 5           # Keep only recent versions
+      # No backup needed in dev
+      backup_existing: false,
+      # No notifications for dev deploys
+      notify_on_deploy: false,
+      # Clean up old dev builds
+      auto_cleanup_old: true,
+      # Keep only recent versions
+      max_versions_kept: 5
     }
   end
 
@@ -180,7 +197,8 @@ defmodule Defdo.TailwindBuilder.ConfigProviders.DevelopmentConfigProvider do
     # Very permissive download policy for development
     case get_version_policy(version) do
       :allowed -> :ok
-      _ -> :ok  # Allow everything in development
+      # Allow everything in development
+      _ -> :ok
     end
   end
 
@@ -237,9 +255,12 @@ defmodule Defdo.TailwindBuilder.ConfigProviders.DevelopmentConfigProvider do
       enable_disk_cache: true,
       cache_directory: "/tmp/tailwind_dev_cache",
       cache_downloads: true,
-      cache_builds: false,         # Don't cache builds in development
-      auto_invalidate: true,       # Auto-invalidate for fresh builds
-      max_cache_size_mb: 1000     # 1GB cache for development
+      # Don't cache builds in development
+      cache_builds: false,
+      # Auto-invalidate for fresh builds
+      auto_invalidate: true,
+      # 1GB cache for development
+      max_cache_size_mb: 1000
     }
   end
 
@@ -249,10 +270,13 @@ defmodule Defdo.TailwindBuilder.ConfigProviders.DevelopmentConfigProvider do
   def get_testing_config do
     %{
       run_integration_tests: true,
-      mock_external_services: false,  # Use real services in development
+      # Use real services in development
+      mock_external_services: false,
       parallel_test_execution: true,
-      test_timeout_multiplier: 2.0,   # Longer timeouts for debugging
-      preserve_test_artifacts: true   # Keep test files for inspection
+      # Longer timeouts for debugging
+      test_timeout_multiplier: 2.0,
+      # Keep test files for inspection
+      preserve_test_artifacts: true
     }
   end
 
@@ -264,8 +288,10 @@ defmodule Defdo.TailwindBuilder.ConfigProviders.DevelopmentConfigProvider do
       enabled: true,
       level: :debug,
       backends: [:console],
-      sample_rate: 1.0,  # Sample all events in development
-      trace_retention_hours: 2,  # Short retention for development
+      # Sample all events in development
+      sample_rate: 1.0,
+      # Short retention for development
+      trace_retention_hours: 2,
       detailed_logging: true,
       performance_monitoring: true,
       error_tracking: :local,

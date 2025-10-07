@@ -2,7 +2,7 @@ defmodule Defdo.TailwindBuilder.ConfigProviderFactory do
   @moduledoc """
   Factory for selecting and creating the appropriate ConfigProvider
   based on environment, configuration, or explicit selection.
-  
+
   This module provides a centralized way to determine which ConfigProvider
   implementation to use in different contexts, with automatic detection
   and manual override capabilities.
@@ -14,19 +14,19 @@ defmodule Defdo.TailwindBuilder.ConfigProviderFactory do
     StagingConfigProvider,
     TestingConfigProvider
   }
-  
+
   alias Defdo.TailwindBuilder.DefaultConfigProvider
 
   @doc """
   Get the appropriate ConfigProvider module for the current environment.
-  
+
   Selection priority:
   1. Explicitly configured provider in application config
   2. Environment-based auto-detection
   3. Default provider as fallback
-  
+
   ## Examples
-  
+
       # Auto-detect based on Mix environment
       provider = ConfigProviderFactory.get_provider()
       
@@ -70,8 +70,10 @@ defmodule Defdo.TailwindBuilder.ConfigProviderFactory do
   def get_provider(provider) when is_atom(provider) do
     # Check if it's a known environment first
     case provider do
-      env when env in [:development, :dev, :production, :staging, :stage, :test, :testing, :default] ->
+      env
+      when env in [:development, :dev, :production, :staging, :stage, :test, :testing, :default] ->
         get_provider(env)
+
       _ ->
         # Validate that the provider implements the behavior
         if implements_config_provider?(provider) do
@@ -95,33 +97,33 @@ defmodule Defdo.TailwindBuilder.ConfigProviderFactory do
       # Check explicit environment variables first
       System.get_env("TAILWIND_BUILDER_ENV") == "production" ->
         ProductionConfigProvider
-      
+
       System.get_env("TAILWIND_BUILDER_ENV") == "staging" ->
         StagingConfigProvider
-      
+
       System.get_env("TAILWIND_BUILDER_ENV") == "development" ->
         DevelopmentConfigProvider
-      
+
       System.get_env("TAILWIND_BUILDER_ENV") == "testing" ->
         TestingConfigProvider
-      
+
       # Check CI environment
       is_ci_environment?() ->
         TestingConfigProvider
-      
+
       # Use Mix environment
       Mix.env() == :prod ->
         ProductionConfigProvider
-      
+
       Mix.env() == :staging ->
         StagingConfigProvider
-      
+
       Mix.env() == :test ->
         TestingConfigProvider
-      
+
       Mix.env() == :dev ->
         DevelopmentConfigProvider
-      
+
       # Default fallback
       true ->
         DefaultConfigProvider
@@ -130,7 +132,7 @@ defmodule Defdo.TailwindBuilder.ConfigProviderFactory do
 
   @doc """
   Create a configured instance of the selected provider.
-  
+
   This allows for runtime configuration and dependency injection
   of the ConfigProvider.
   """
@@ -139,7 +141,7 @@ defmodule Defdo.TailwindBuilder.ConfigProviderFactory do
       :module ->
         # Return the module itself (stateless)
         provider_module
-      
+
       :process ->
         # Start a GenServer instance (if the provider supports it)
         if function_exported?(provider_module, :start_link, 1) do
@@ -148,7 +150,7 @@ defmodule Defdo.TailwindBuilder.ConfigProviderFactory do
         else
           raise ArgumentError, "Provider #{provider_module} does not support process instances"
         end
-      
+
       :agent ->
         # Create an Agent with provider state (if supported)
         if function_exported?(provider_module, :get_initial_state, 1) do
@@ -166,7 +168,7 @@ defmodule Defdo.TailwindBuilder.ConfigProviderFactory do
   """
   def get_provider_info(provider \\ nil) do
     provider_module = provider || get_provider()
-    
+
     %{
       module: provider_module,
       environment: detect_environment_for_provider(provider_module),
@@ -190,7 +192,7 @@ defmodule Defdo.TailwindBuilder.ConfigProviderFactory do
       },
       %{
         module: DevelopmentConfigProvider,
-        name: "Development", 
+        name: "Development",
         description: "Optimized for development workflows",
         environments: [:development, :dev]
       },
@@ -220,7 +222,7 @@ defmodule Defdo.TailwindBuilder.ConfigProviderFactory do
   """
   def validate_provider_config(provider \\ nil) do
     provider_module = provider || get_provider()
-    
+
     with :ok <- validate_behavior_implementation(provider_module),
          :ok <- validate_required_functions(provider_module),
          :ok <- validate_configuration_consistency(provider_module) do
@@ -248,14 +250,14 @@ defmodule Defdo.TailwindBuilder.ConfigProviderFactory do
     try do
       # Check if module exists and implements the behavior
       Code.ensure_loaded?(module) and
-      function_exported?(module, :get_supported_plugins, 0) and
-      function_exported?(module, :get_known_checksums, 0) and
-      function_exported?(module, :get_version_policy, 1) and
-      function_exported?(module, :get_operation_limits, 0) and
-      function_exported?(module, :get_deployment_config, 1) and
-      function_exported?(module, :get_build_policies, 0) and
-      function_exported?(module, :get_deployment_policies, 0) and
-      function_exported?(module, :validate_operation_policy, 2)
+        function_exported?(module, :get_supported_plugins, 0) and
+        function_exported?(module, :get_known_checksums, 0) and
+        function_exported?(module, :get_version_policy, 1) and
+        function_exported?(module, :get_operation_limits, 0) and
+        function_exported?(module, :get_deployment_config, 1) and
+        function_exported?(module, :get_build_policies, 0) and
+        function_exported?(module, :get_deployment_policies, 0) and
+        function_exported?(module, :validate_operation_policy, 2)
     rescue
       _ -> false
     end
@@ -263,10 +265,15 @@ defmodule Defdo.TailwindBuilder.ConfigProviderFactory do
 
   defp is_ci_environment? do
     ci_indicators = [
-      "CI", "CONTINUOUS_INTEGRATION", "GITHUB_ACTIONS", 
-      "GITLAB_CI", "CIRCLECI", "TRAVIS", "JENKINS_URL"
+      "CI",
+      "CONTINUOUS_INTEGRATION",
+      "GITHUB_ACTIONS",
+      "GITLAB_CI",
+      "CIRCLECI",
+      "TRAVIS",
+      "JENKINS_URL"
     ]
-    
+
     Enum.any?(ci_indicators, &System.get_env/1)
   end
 
@@ -283,31 +290,45 @@ defmodule Defdo.TailwindBuilder.ConfigProviderFactory do
 
   defp get_provider_features(provider_module) do
     features = []
-    
-    features = if function_exported?(provider_module, :get_logging_config, 0),
-      do: [:logging | features], else: features
-    
-    features = if function_exported?(provider_module, :get_cache_config, 0),
-      do: [:caching | features], else: features
-    
-    features = if function_exported?(provider_module, :get_monitoring_config, 0),
-      do: [:monitoring | features], else: features
-    
-    features = if function_exported?(provider_module, :get_security_config, 0),
-      do: [:security | features], else: features
-    
+
+    features =
+      if function_exported?(provider_module, :get_logging_config, 0),
+        do: [:logging | features],
+        else: features
+
+    features =
+      if function_exported?(provider_module, :get_cache_config, 0),
+        do: [:caching | features],
+        else: features
+
+    features =
+      if function_exported?(provider_module, :get_monitoring_config, 0),
+        do: [:monitoring | features],
+        else: features
+
+    features =
+      if function_exported?(provider_module, :get_security_config, 0),
+        do: [:security | features],
+        else: features
+
     features
   end
 
   defp get_provider_config_keys(provider_module) do
     try do
       # Try to get all configuration by calling the functions
-      base_keys = [:supported_plugins, :known_checksums, :version_policy, 
-                   :operation_limits, :deployment_config, :build_policies, 
-                   :deployment_policies]
-      
+      base_keys = [
+        :supported_plugins,
+        :known_checksums,
+        :version_policy,
+        :operation_limits,
+        :deployment_config,
+        :build_policies,
+        :deployment_policies
+      ]
+
       optional_keys = get_provider_features(provider_module)
-      
+
       base_keys ++ optional_keys
     rescue
       _ -> [:unknown]
@@ -316,7 +337,7 @@ defmodule Defdo.TailwindBuilder.ConfigProviderFactory do
 
   defp supports_runtime_config?(provider_module) do
     function_exported?(provider_module, :update_config, 2) or
-    function_exported?(provider_module, :reload_config, 0)
+      function_exported?(provider_module, :reload_config, 0)
   end
 
   defp get_provider_version(provider_module) do
@@ -346,11 +367,12 @@ defmodule Defdo.TailwindBuilder.ConfigProviderFactory do
       {:get_deployment_policies, 0},
       {:validate_operation_policy, 2}
     ]
-    
-    missing = Enum.reject(required_functions, fn {fun, arity} ->
-      function_exported?(provider_module, fun, arity)
-    end)
-    
+
+    missing =
+      Enum.reject(required_functions, fn {fun, arity} ->
+        function_exported?(provider_module, fun, arity)
+      end)
+
     if Enum.empty?(missing) do
       :ok
     else
@@ -366,7 +388,7 @@ defmodule Defdo.TailwindBuilder.ConfigProviderFactory do
       _limits = provider_module.get_operation_limits()
       _build_policies = provider_module.get_build_policies()
       _deploy_policies = provider_module.get_deployment_policies()
-      
+
       :ok
     rescue
       error ->

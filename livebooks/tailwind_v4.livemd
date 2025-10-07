@@ -110,4 +110,4 @@ IO.puts("Files deployed: #{length(deploy_result)}")
 IO.puts("========================")
 ```
 
-<!-- livebook:{"offset":3511,"stamp":{"token":"XCP.LsZL8g38anIBgAfYSuyvWOycICnk1DPDHFn27z3nWLPQRPlrgmALPRSGqulqX-ei97BhyvQJXyyeFzsgKaB7sRrBmg0u2qFf-lJ21p-SV4fTjHFkn_dZE8TPk5yGCDD5gjl0DB-AakIg7_-45wuamTlgG7HPF5dIdjb65M2gln4YI2ByFXMiad0zB7AMx7QgIQA","version":2}} -->
+<!-- livebook:{"offset":3511,"stamp":{"token":"XCP.E6e6Mt3oRT32Qt5PE7JAgO5ZxMwIgBXX7x2otLpka0LLUYbCFYliA7AZxjqUg9LMUsR2JDoT0VqQQ9tUGUIHkzQexbd1ObLNEKhJO4N1eNeWkuKq0TYSRX38km93wztIokZ6G1NwGSBeXVO6zkt_5lSa-kDZ0lmOzlkWw1ArUDfHF6lGot4yVCBS1ya0XauQRKg","version":2}} -->

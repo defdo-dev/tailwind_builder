@@ -31,8 +31,10 @@ defmodule Defdo.TailwindBuilder.RemoteBuilder do
   require Logger
   alias Defdo.TailwindBuilder.Telemetry
 
-  @default_timeout 300_000  # 5 minutes
-  @default_poll_interval 5_000  # 5 seconds
+  # 5 minutes
+  @default_timeout 300_000
+  # 5 seconds
+  @default_poll_interval 5_000
 
   @doc """
   Build TailwindCSS using remote compilation nodes
@@ -47,11 +49,13 @@ defmodule Defdo.TailwindBuilder.RemoteBuilder do
     })
 
     with {:coordinator_available, true} <- {:coordinator_available, coordinator_available?()},
-         {:create_build_request, {:ok, build_request}} <- {:create_build_request, create_build_request(opts)},
+         {:create_build_request, {:ok, build_request}} <-
+           {:create_build_request, create_build_request(opts)},
          {:submit_build, {:ok, build_id}} <- {:submit_build, submit_build_request(build_request)},
-         {:wait_completion, {:ok, build_result}} <- {:wait_completion, wait_for_build_completion(build_id, opts)},
-         {:download_binary, {:ok, binary_path}} <- {:download_binary, download_build_binary(build_result, opts)} do
-
+         {:wait_completion, {:ok, build_result}} <-
+           {:wait_completion, wait_for_build_completion(build_id, opts)},
+         {:download_binary, {:ok, binary_path}} <-
+           {:download_binary, download_build_binary(build_result, opts)} do
       result = %{
         version: opts[:version],
         target_arch: opts[:target_arch],
@@ -91,6 +95,7 @@ defmodule Defdo.TailwindBuilder.RemoteBuilder do
     case Req.get("#{coordinator_url()}/api/v1/architectures") do
       {:ok, %{status: 200, body: %{"architectures" => architectures}}} ->
         {:ok, architectures}
+
       error ->
         Logger.warning("Failed to fetch supported architectures: #{inspect(error)}")
         {:error, :coordinator_unavailable}
@@ -130,6 +135,7 @@ defmodule Defdo.TailwindBuilder.RemoteBuilder do
 
     # Validate target architecture format
     target_arch = opts[:target_arch]
+
     unless String.match?(target_arch, ~r/^[a-z]+-[a-z0-9]+$/) do
       raise ArgumentError, "Invalid target architecture format: #{target_arch}"
     end
@@ -158,7 +164,9 @@ defmodule Defdo.TailwindBuilder.RemoteBuilder do
   end
 
   defp submit_build_request(build_request) do
-    Logger.info("Submitting remote build request for #{build_request.version} (#{build_request.target_arch})")
+    Logger.info(
+      "Submitting remote build request for #{build_request.version} (#{build_request.target_arch})"
+    )
 
     headers = [
       {"authorization", "Bearer #{api_key()}"},
@@ -168,7 +176,11 @@ defmodule Defdo.TailwindBuilder.RemoteBuilder do
     case Req.post("#{coordinator_url()}/api/v1/builds", json: build_request, headers: headers) do
       {:ok, %{status: 200, body: %{"build_id" => build_id} = response}} ->
         Logger.info("Build submitted successfully: #{build_id}")
-        Logger.info("Queue position: #{response["queue_position"]}, ETA: #{response["estimated_time"]}s")
+
+        Logger.info(
+          "Queue position: #{response["queue_position"]}, ETA: #{response["estimated_time"]}s"
+        )
+
         {:ok, build_id}
 
       {:ok, %{status: 409, body: %{"build_id" => build_id}}} ->
@@ -194,7 +206,8 @@ defmodule Defdo.TailwindBuilder.RemoteBuilder do
   end
 
   defp wait_loop(build_id, start_time, timeout, poll_interval) do
-    elapsed = System.convert_time_unit(System.monotonic_time() - start_time, :native, :millisecond)
+    elapsed =
+      System.convert_time_unit(System.monotonic_time() - start_time, :native, :millisecond)
 
     if elapsed >= timeout do
       {:error, :timeout}
@@ -237,14 +250,15 @@ defmodule Defdo.TailwindBuilder.RemoteBuilder do
     File.mkdir_p!(output_dir)
 
     # Determine output filename
-    output_filename = case target_arch do
-      "linux-x64" -> "tailwindcss-linux-x64"
-      "linux-arm64" -> "tailwindcss-linux-arm64"
-      "darwin-x64" -> "tailwindcss-macos-x64"
-      "darwin-arm64" -> "tailwindcss-macos-arm64"
-      "win32-x64" -> "tailwindcss-windows-x64.exe"
-      _ -> "tailwindcss-#{target_arch}"
-    end
+    output_filename =
+      case target_arch do
+        "linux-x64" -> "tailwindcss-linux-x64"
+        "linux-arm64" -> "tailwindcss-linux-arm64"
+        "darwin-x64" -> "tailwindcss-macos-x64"
+        "darwin-arm64" -> "tailwindcss-macos-arm64"
+        "win32-x64" -> "tailwindcss-windows-x64.exe"
+        _ -> "tailwindcss-#{target_arch}"
+      end
 
     output_path = Path.join(output_dir, output_filename)
 
@@ -255,12 +269,15 @@ defmodule Defdo.TailwindBuilder.RemoteBuilder do
         # Verify download
         case File.stat(output_path) do
           {:ok, %{size: size}} when size > 0 ->
-            File.chmod!(output_path, 0o755)  # Make executable
+            # Make executable
+            File.chmod!(output_path, 0o755)
             Logger.info("Binary downloaded successfully: #{output_path} (#{size} bytes)")
             {:ok, output_path}
+
           {:ok, %{size: 0}} ->
             File.rm!(output_path)
             {:error, :empty_download}
+
           {:error, reason} ->
             {:error, {:download_verification_failed, reason}}
         end

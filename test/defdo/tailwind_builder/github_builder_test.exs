@@ -1,5 +1,6 @@
 defmodule Defdo.TailwindBuilder.GitHubBuilderTest do
-  use ExUnit.Case, async: false  # Changed to false due to HTTP mocking
+  # Changed to false due to HTTP mocking
+  use ExUnit.Case, async: false
 
   alias Defdo.TailwindBuilder.GitHubBuilder
 
@@ -22,6 +23,7 @@ defmodule Defdo.TailwindBuilder.GitHubBuilderTest do
       # Restore original environment variables
       Enum.each(original_env, fn {key, value} ->
         env_key = key |> Atom.to_string() |> String.upcase()
+
         if value do
           System.put_env(env_key, value)
         else
@@ -45,13 +47,12 @@ defmodule Defdo.TailwindBuilder.GitHubBuilderTest do
       }
 
       assert {:error, "Missing GitHub configuration: token"} =
-        GitHubBuilder.trigger_build(build_opts)
+               GitHubBuilder.trigger_build(build_opts)
     end
 
     test "prepares workflow inputs correctly" do
-      with_mock Req, [
-        post: fn _url, _opts -> {:ok, %Req.Response{status: 204, body: ""}} end
-      ] do
+      with_mock Req,
+        post: fn _url, _opts -> {:ok, %Req.Response{status: 204, body: ""}} end do
         build_opts = %{
           version: "4.1.14",
           plugins: ["daisyui_v5"],
@@ -92,11 +93,10 @@ defmodule Defdo.TailwindBuilder.GitHubBuilderTest do
 
   describe "get_build_status/1" do
     test "handles invalid build ID" do
-      with_mock Req, [
+      with_mock Req,
         get: fn _url, _opts ->
           {:ok, %Req.Response{status: 200, body: %{"workflow_runs" => []}}}
-        end
-      ] do
+        end do
         result = GitHubBuilder.get_build_status("invalid-build-id")
 
         # Should return an error since the build doesn't exist
@@ -107,9 +107,8 @@ defmodule Defdo.TailwindBuilder.GitHubBuilderTest do
 
   describe "GitHub Actions integration" do
     test "successfully triggers a build with mocked response" do
-      with_mock Req, [
-        post: fn _url, _opts -> {:ok, %Req.Response{status: 204, body: ""}} end
-      ] do
+      with_mock Req,
+        post: fn _url, _opts -> {:ok, %Req.Response{status: 204, body: ""}} end do
         build_opts = %{
           version: "3.4.17",
           plugins: ["daisyui"],

@@ -36,6 +36,7 @@ defmodule Defdo.TailwindBuilder.Examples.CoreUsage do
     # Technical comparison
     comparison = Core.compare_versions("3.4.17", "4.1.11")
     IO.puts("Key technical differences:")
+
     for {aspect, different?} <- comparison.differences do
       if different?, do: IO.puts("  - #{aspect}: DIFFERENT")
     end
@@ -52,11 +53,13 @@ defmodule Defdo.TailwindBuilder.Examples.CoreUsage do
 
     for version <- versions do
       IO.puts("#{version}:")
+
       for arch <- target_architectures do
         can_compile = Core.can_cross_compile?(version, arch)
         status = if can_compile, do: "✓ POSSIBLE", else: "✗ NOT POSSIBLE"
         IO.puts("  #{arch}: #{status}")
       end
+
       IO.puts("")
     end
 
@@ -93,10 +96,12 @@ defmodule Defdo.TailwindBuilder.Examples.CoreUsage do
     IO.puts("")
 
     # Cross-compilation requirements
-    cross_reqs = Core.get_technical_requirements(:cross_compile, %{
-      version: "4.1.11",
-      target_arch: "linux-x64"
-    })
+    cross_reqs =
+      Core.get_technical_requirements(:cross_compile, %{
+        version: "4.1.11",
+        target_arch: "linux-x64"
+      })
+
     IO.puts("Cross-compiling v4.1.11 to linux-x64:")
     IO.puts("  - Supported: #{cross_reqs.cross_compilation.supported}")
     IO.puts("  - Reason: #{cross_reqs.cross_compilation[:reason]}")
@@ -117,24 +122,25 @@ defmodule Defdo.TailwindBuilder.Examples.CoreUsage do
 
     user_needs_cross_compilation = true
 
-    recommendation = if user_needs_cross_compilation do
-      # Business policy: If user needs cross-compilation, recommend v3
-      # Even though v4 has newer features
-      %{
-        recommended_version: "3.4.17",
-        reason: "Cross-compilation requirement",
-        technical_basis: Core.supports_cross_compilation?("3.4.17"),
-        tradeoffs: ["Missing some v4 features", "But gains deployment flexibility"]
-      }
-    else
-      # Business policy: If no cross-compilation needed, recommend v4
-      %{
-        recommended_version: "4.1.11",
-        reason: "Latest features and performance",
-        technical_basis: Core.in_production_support?("4.1.11"),
-        tradeoffs: ["Host-only compilation", "But better performance and features"]
-      }
-    end
+    recommendation =
+      if user_needs_cross_compilation do
+        # Business policy: If user needs cross-compilation, recommend v3
+        # Even though v4 has newer features
+        %{
+          recommended_version: "3.4.17",
+          reason: "Cross-compilation requirement",
+          technical_basis: Core.supports_cross_compilation?("3.4.17"),
+          tradeoffs: ["Missing some v4 features", "But gains deployment flexibility"]
+        }
+      else
+        # Business policy: If no cross-compilation needed, recommend v4
+        %{
+          recommended_version: "4.1.11",
+          reason: "Latest features and performance",
+          technical_basis: Core.in_production_support?("4.1.11"),
+          tradeoffs: ["Host-only compilation", "But better performance and features"]
+        }
+      end
 
     IO.puts("Business recommendation based on user needs:")
     IO.puts("  - Version: #{recommendation.recommended_version}")

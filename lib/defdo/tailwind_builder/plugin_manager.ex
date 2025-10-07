@@ -18,22 +18,26 @@ defmodule Defdo.TailwindBuilder.PluginManager do
   Applies a plugin to Tailwind files
   """
   def apply_plugin(plugin_spec, opts \\ []) do
-    opts = Keyword.validate!(opts, [
-      :version,
-      :base_path,
-      :plugin_name,
-      :validate_compatibility
-    ])
+    opts =
+      Keyword.validate!(opts, [
+        :version,
+        :base_path,
+        :plugin_name,
+        :validate_compatibility
+      ])
 
     version = opts[:version] || raise ArgumentError, "version is required"
     base_path = opts[:base_path] || raise ArgumentError, "base_path is required"
     validate_compatibility = Keyword.get(opts, :validate_compatibility, true)
 
     with {:validate_spec, :ok} <- {:validate_spec, validate_plugin_spec(plugin_spec)},
-         {:validate_compat, :ok} <- {:validate_compat, maybe_validate_compatibility(plugin_spec, version, validate_compatibility)},
+         {:validate_compat, :ok} <-
+           {:validate_compat,
+            maybe_validate_compatibility(plugin_spec, version, validate_compatibility)},
          {:get_files, {:ok, files_to_patch}} <- {:get_files, get_files_to_patch(version)},
-         {:apply_patches, {:ok, results}} <- {:apply_patches, apply_patches_to_files(plugin_spec, files_to_patch, version, base_path)} do
-
+         {:apply_patches, {:ok, results}} <-
+           {:apply_patches,
+            apply_patches_to_files(plugin_spec, files_to_patch, version, base_path)} do
       result = %{
         plugin: extract_plugin_name(plugin_spec),
         version: version,
@@ -66,7 +70,8 @@ defmodule Defdo.TailwindBuilder.PluginManager do
           end
         end)
 
-      {:error, _} -> false
+      {:error, _} ->
+        false
     end
   end
 
@@ -150,7 +155,8 @@ defmodule Defdo.TailwindBuilder.PluginManager do
           error -> error
         end
 
-      _ -> {:error, {:unsupported_file_type, filename}}
+      _ ->
+        {:error, {:unsupported_file_type, filename}}
     end
   end
 
@@ -185,29 +191,31 @@ defmodule Defdo.TailwindBuilder.PluginManager do
   defp apply_patches_to_files(plugin_spec, files_to_patch, version, base_path) do
     plugin_name = extract_plugin_name(plugin_spec)
 
-    results = for {relative_path, filename} <- files_to_patch do
-      Logger.debug("Patching #{filename} with plugin #{plugin_name}")
+    results =
+      for {relative_path, filename} <- files_to_patch do
+        Logger.debug("Patching #{filename} with plugin #{plugin_name}")
 
-      file_path = build_file_path(base_path, version, filename, relative_path)
+        file_path = build_file_path(base_path, version, filename, relative_path)
 
-      case read_and_patch_file(file_path, plugin_spec, filename, version) do
-        {:ok, new_content} ->
-          File.write!(file_path, new_content)
-          "Patch to #{filename} was applied."
+        case read_and_patch_file(file_path, plugin_spec, filename, version) do
+          {:ok, new_content} ->
+            File.write!(file_path, new_content)
+            "Patch to #{filename} was applied."
 
-        {:skip, _reason} ->
-          "Patch to #{filename} was applied."
+          {:skip, _reason} ->
+            "Patch to #{filename} was applied."
 
-        {:error, reason} ->
-          {:error, reason}
+          {:error, reason} ->
+            {:error, reason}
+        end
       end
-    end
 
     # Check if there were errors
-    errors = Enum.filter(results, fn
-      {:error, _} -> true
-      _ -> false
-    end)
+    errors =
+      Enum.filter(results, fn
+        {:error, _} -> true
+        _ -> false
+      end)
 
     if Enum.empty?(errors) do
       {:ok, results}
@@ -246,22 +254,30 @@ defmodule Defdo.TailwindBuilder.PluginManager do
 
       "index.ts" ->
         plugin_name = extract_plugin_name(plugin_spec)
-        content =~ ~s|id === '#{plugin_name}'| ||
-        content =~ ~s|id.startsWith('#{plugin_name}/')| ||
-        content =~ ~s|'#{plugin_name}': await import('#{plugin_name}')|
 
-      _ -> false
+        content =~ ~s|id === '#{plugin_name}'| ||
+          content =~ ~s|id.startsWith('#{plugin_name}/')| ||
+          content =~ ~s|'#{plugin_name}': await import('#{plugin_name}')|
+
+      _ ->
+        false
     end
   end
 
   defp build_file_path(base_path, version, filename, relative_path) do
     constraints = Core.get_version_constraints(version)
 
-    project_base = case constraints.major_version do
-      :v4 -> Path.join([base_path, "tailwindcss-#{version}", "packages", "@tailwindcss-standalone"])
-      :v3 -> Path.join([base_path, "tailwindcss-#{version}", "standalone-cli"])
-      _ -> base_path
-    end
+    project_base =
+      case constraints.major_version do
+        :v4 ->
+          Path.join([base_path, "tailwindcss-#{version}", "packages", "@tailwindcss-standalone"])
+
+        :v3 ->
+          Path.join([base_path, "tailwindcss-#{version}", "standalone-cli"])
+
+        _ ->
+          base_path
+      end
 
     Path.join([project_base, relative_path, filename])
   end
@@ -356,19 +372,20 @@ defmodule Defdo.TailwindBuilder.PluginManager do
 
     already_patched? =
       content =~ ~s|id === '#{plugin_name}'| ||
-      content =~ ~s|id.startsWith('#{plugin_name}/')| ||
-      content =~ ~s|'#{plugin_name}': await import('#{plugin_name}')|
+        content =~ ~s|id.startsWith('#{plugin_name}/')| ||
+        content =~ ~s|'#{plugin_name}': await import('#{plugin_name}')|
 
     if already_patched? do
       Logger.info("Plugin #{plugin_name} already patched in index.ts, skipping")
       {:ok, content}
     else
       # Aplicar múltiples patches para index.ts
-      patched_content = content
-      |> patch_tw_resolve(plugin_name)
-      |> patch_special_path(plugin_name)
-      |> patch_tw_load(plugin_name)
-      |> patch_bundled_imports(plugin_name)
+      patched_content =
+        content
+        |> patch_tw_resolve(plugin_name)
+        |> patch_special_path(plugin_name)
+        |> patch_tw_load(plugin_name)
+        |> patch_bundled_imports(plugin_name)
 
       {:ok, patched_content}
     end
@@ -404,11 +421,12 @@ defmodule Defdo.TailwindBuilder.PluginManager do
     patch_string_at = ~s[    return require('@tailwindcss/aspect-ratio')]
 
     # Special handling for daisyui to support daisyui/theme
-    patch_text = if plugin_name == "daisyui" do
-      ~s[\n  } else if (id.endsWith('daisyui/theme')) {\n    return require('daisyui/theme')\n  } else if (/(\\/)?daisyui(\\/(?!theme).+)?$/.test(id)) {\n    return require('daisyui')]
-    else
-      ~s[\n  } else if (/(\\/)?#{plugin_name}(\\/.+)?$/.test(id)) {\n    return require('#{plugin_name}')]
-    end
+    patch_text =
+      if plugin_name == "daisyui" do
+        ~s[\n  } else if (id.endsWith('daisyui/theme')) {\n    return require('daisyui/theme')\n  } else if (/(\\/)?daisyui(\\/(?!theme).+)?$/.test(id)) {\n    return require('daisyui')]
+      else
+        ~s[\n  } else if (/(\\/)?#{plugin_name}(\\/.+)?$/.test(id)) {\n    return require('#{plugin_name}')]
+      end
 
     case patch_content(content, patch_string_at, patch_text, "", false, :after) do
       {:ok, new_content} -> new_content
@@ -422,11 +440,12 @@ defmodule Defdo.TailwindBuilder.PluginManager do
     """
 
     # Special handling for daisyui to support daisyui/theme
-    patch_text = if plugin_name == "daisyui" do
-      ~s[      '#{plugin_name}': await import('#{plugin_name}'),\n      '#{plugin_name}/theme': await import('#{plugin_name}/theme'),]
-    else
-      ~s[      '#{plugin_name}': await import('#{plugin_name}'),]
-    end
+    patch_text =
+      if plugin_name == "daisyui" do
+        ~s[      '#{plugin_name}': await import('#{plugin_name}'),\n      '#{plugin_name}/theme': await import('#{plugin_name}/theme'),]
+      else
+        ~s[      '#{plugin_name}': await import('#{plugin_name}'),]
+      end
 
     case patch_content(content, patch_string_at, patch_text, "", false, :after) do
       {:ok, new_content} -> new_content
@@ -437,19 +456,20 @@ defmodule Defdo.TailwindBuilder.PluginManager do
   defp patch_content(content, string_to_split_on, patch_text, spacer, add_comma, insert_mode) do
     case split_with_self(content, string_to_split_on) do
       {beginning, splitter, rest} ->
-        order_parts = if insert_mode == :before do
-          if add_comma do
-            [beginning, patch_text, ?,, ?\n, splitter, spacer, rest]
+        order_parts =
+          if insert_mode == :before do
+            if add_comma do
+              [beginning, patch_text, ?,, ?\n, splitter, spacer, rest]
+            else
+              [beginning, patch_text, ?\n, splitter, spacer, rest]
+            end
           else
-            [beginning, patch_text, ?\n, splitter, spacer, rest]
+            if add_comma do
+              [beginning, splitter, spacer, patch_text, ?,, ?\n, rest]
+            else
+              [beginning, splitter, spacer, patch_text, ?\n, rest]
+            end
           end
-        else
-          if add_comma do
-            [beginning, splitter, spacer, patch_text, ?,, ?\n, rest]
-          else
-            [beginning, splitter, spacer, patch_text, ?\n, rest]
-          end
-        end
 
         new_content = IO.iodata_to_binary(order_parts)
         {:ok, new_content}

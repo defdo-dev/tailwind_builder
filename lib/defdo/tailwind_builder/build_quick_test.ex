@@ -50,7 +50,8 @@ defmodule Defdo.TailwindBuilder.BuildQuickTest do
       },
       description: "Tailwind v4 with DaisyUI and custom theme",
       expected_duration_ms: 95_000,
-      test_css: "@import \"tailwindcss\"; @plugin \"daisyui\"; @config { theme: { extend: { colors: { mytheme: \"#570df8\" } } } };"
+      test_css:
+        "@import \"tailwindcss\"; @plugin \"daisyui\"; @config { theme: { extend: { colors: { mytheme: \"#570df8\" } } } };"
     },
     v3_legacy: %{
       version: "3.4.17",
@@ -79,6 +80,7 @@ defmodule Defdo.TailwindBuilder.BuildQuickTest do
     case Map.get(@test_scenarios, scenario_name) do
       nil ->
         {:error, {:unknown_scenario, scenario_name, available_scenarios()}}
+
       scenario ->
         execute_scenario(scenario, working_dir, nil)
     end
@@ -92,6 +94,7 @@ defmodule Defdo.TailwindBuilder.BuildQuickTest do
     case Map.get(@test_scenarios, scenario_name) do
       nil ->
         {:error, {:unknown_scenario, scenario_name, available_scenarios()}}
+
       scenario ->
         {:ok, monitor_pid} = BuildMonitor.start_monitoring(subscriber_pid)
         result = execute_scenario(scenario, working_dir, monitor_pid)
@@ -118,14 +121,25 @@ defmodule Defdo.TailwindBuilder.BuildQuickTest do
   Run all scenarios in sequence (useful for regression testing)
   """
   def run_all_scenarios(working_dir, subscriber_pid \\ nil) do
-    results = for {scenario_name, _scenario} <- @test_scenarios do
-      Logger.info("Running scenario: #{scenario_name}")
-      result = case subscriber_pid do
-        nil -> run(scenario_name, Path.join(working_dir, to_string(scenario_name)))
-        pid -> run_with_monitoring(scenario_name, Path.join(working_dir, to_string(scenario_name)), pid)
+    results =
+      for {scenario_name, _scenario} <- @test_scenarios do
+        Logger.info("Running scenario: #{scenario_name}")
+
+        result =
+          case subscriber_pid do
+            nil ->
+              run(scenario_name, Path.join(working_dir, to_string(scenario_name)))
+
+            pid ->
+              run_with_monitoring(
+                scenario_name,
+                Path.join(working_dir, to_string(scenario_name)),
+                pid
+              )
+          end
+
+        {scenario_name, result}
       end
-      {scenario_name, result}
-    end
 
     summary = %{
       total: length(results),
@@ -186,7 +200,8 @@ defmodule Defdo.TailwindBuilder.BuildQuickTest do
 
       if monitor_pid, do: send_test_update(monitor_pid, :test_binary_complete, scenario)
 
-      duration_ms = System.convert_time_unit(System.monotonic_time() - start_time, :native, :millisecond)
+      duration_ms =
+        System.convert_time_unit(System.monotonic_time() - start_time, :native, :millisecond)
 
       result = %{
         scenario: scenario.description,
@@ -199,14 +214,19 @@ defmodule Defdo.TailwindBuilder.BuildQuickTest do
         working_dir: scenario_dir
       }
 
-      Logger.info("✅ Test completed in #{duration_ms}ms (expected: #{scenario.expected_duration_ms}ms)")
-      if monitor_pid, do: send_test_update(monitor_pid, :test_success, %{scenario | result: result})
+      Logger.info(
+        "✅ Test completed in #{duration_ms}ms (expected: #{scenario.expected_duration_ms}ms)"
+      )
+
+      if monitor_pid,
+        do: send_test_update(monitor_pid, :test_success, %{scenario | result: result})
 
       {:ok, result}
-
     rescue
       error ->
-        duration_ms = System.convert_time_unit(System.monotonic_time() - start_time, :native, :millisecond)
+        duration_ms =
+          System.convert_time_unit(System.monotonic_time() - start_time, :native, :millisecond)
+
         Logger.error("❌ Test failed after #{duration_ms}ms: #{inspect(error)}")
         if monitor_pid, do: send_test_update(monitor_pid, :test_error, %{scenario | error: error})
         {:error, {error, __STACKTRACE__}}
@@ -217,6 +237,7 @@ defmodule Defdo.TailwindBuilder.BuildQuickTest do
     if File.exists?(working_dir) do
       File.rm_rf!(working_dir)
     end
+
     File.mkdir_p!(working_dir)
     working_dir
   end
@@ -254,16 +275,21 @@ defmodule Defdo.TailwindBuilder.BuildQuickTest do
       File.write!(input_file, scenario.test_css)
 
       case System.cmd(binary_path, ["--input", input_file, "--output", output_file],
-                      stderr_to_stdout: true, cd: temp_dir) do
+             stderr_to_stdout: true,
+             cd: temp_dir
+           ) do
         {output, 0} ->
           if File.exists?(output_file) do
             css_content = File.read!(output_file)
+
             if String.contains?(css_content, "tailwindcss") do
-              {:ok, %{
-                output: output,
-                css_size: byte_size(css_content),
-                has_daisyui: String.contains?(css_content, "daisyUI") or String.contains?(output, "daisyUI")
-              }}
+              {:ok,
+               %{
+                 output: output,
+                 css_size: byte_size(css_content),
+                 has_daisyui:
+                   String.contains?(css_content, "daisyUI") or String.contains?(output, "daisyUI")
+               }}
             else
               {:error, :invalid_css_output}
             end
@@ -274,7 +300,6 @@ defmodule Defdo.TailwindBuilder.BuildQuickTest do
         {error_output, exit_code} ->
           {:error, {:css_compilation_failed, exit_code, error_output}}
       end
-
     after
       File.rm_rf([input_file, output_file])
     end
@@ -296,20 +321,26 @@ defmodule Defdo.TailwindBuilder.BuildQuickTest do
             nil
           end
 
-        {:error, _} -> nil
+        {:error, _} ->
+          nil
       end
     else
       nil
     end
   end
+
   defp find_binary_path(_), do: nil
 
   defp send_test_update(monitor_pid, event_type, data) when is_pid(monitor_pid) do
-    send(monitor_pid, {:test_progress, %{
-      type: event_type,
-      data: data,
-      timestamp: System.system_time(:millisecond)
-    }})
+    send(
+      monitor_pid,
+      {:test_progress,
+       %{
+         type: event_type,
+         data: data,
+         timestamp: System.system_time(:millisecond)
+       }}
+    )
   end
 
   ## Example Usage Functions
@@ -321,23 +352,25 @@ defmodule Defdo.TailwindBuilder.BuildQuickTest do
     working_dir = "/tmp/tailwind_quick_test"
 
     # Start monitoring in current process
-    test_pid = spawn(fn ->
-      case run_with_monitoring(:v4_basic, working_dir, self()) do
-        {:ok, result} ->
-          IO.puts("✅ Test successful: #{result.scenario}")
-          IO.puts("Duration: #{result.duration_ms}ms")
-          IO.puts("Performance: #{Float.round(result.performance_ratio * 100, 1)}% of expected")
+    test_pid =
+      spawn(fn ->
+        case run_with_monitoring(:v4_basic, working_dir, self()) do
+          {:ok, result} ->
+            IO.puts("✅ Test successful: #{result.scenario}")
+            IO.puts("Duration: #{result.duration_ms}ms")
+            IO.puts("Performance: #{Float.round(result.performance_ratio * 100, 1)}% of expected")
 
-        {:error, reason} ->
-          IO.puts("❌ Test failed: #{inspect(reason)}")
-      end
-    end)
+          {:error, reason} ->
+            IO.puts("❌ Test failed: #{inspect(reason)}")
+        end
+      end)
 
     # Listen for progress updates
     listen_for_progress(test_pid)
   end
 
   defp listen_for_progress(test_pid) do
+    # 3 minute timeout
     receive do
       {:build_progress, event} ->
         IO.puts("[BUILD] #{event.message}")
@@ -346,33 +379,40 @@ defmodule Defdo.TailwindBuilder.BuildQuickTest do
       {:test_progress, event} ->
         IO.puts("[TEST] #{format_test_event(event)}")
         listen_for_progress(test_pid)
-
-    after 180_000 -> # 3 minute timeout
-      IO.puts("⏰ Test timeout")
+    after
+      180_000 ->
+        IO.puts("⏰ Test timeout")
     end
   end
 
   defp format_test_event(%{type: :test_start, data: scenario}) do
     "🧪 Starting: #{scenario.description}"
   end
+
   defp format_test_event(%{type: :download_start}) do
     "📥 Downloading source..."
   end
+
   defp format_test_event(%{type: :plugin_start}) do
     "🔌 Adding plugins..."
   end
+
   defp format_test_event(%{type: :build_start}) do
     "🏗️  Building binary..."
   end
+
   defp format_test_event(%{type: :test_binary_start}) do
     "🧪 Testing functionality..."
   end
+
   defp format_test_event(%{type: :test_success, data: %{result: result}}) do
     "✅ Success! (#{result.duration_ms}ms)"
   end
+
   defp format_test_event(%{type: :test_error, data: %{error: error}}) do
     "❌ Failed: #{inspect(error)}"
   end
+
   defp format_test_event(%{type: type}) do
     "◦ #{String.replace(to_string(type), "_", " ")}"
   end
