@@ -45,6 +45,7 @@ defmodule Defdo.TailwindBuilder.Builder do
             Logger.error("Dependency validation failed: #{Exception.message(error)}")
             {:error, {:dependency_check_failed, Exception.message(error)}}
         end
+
       false ->
         # Use telemetry wrapper for comprehensive tracking
         plugins = extract_plugins_from_opts(opts)
@@ -56,12 +57,13 @@ defmodule Defdo.TailwindBuilder.Builder do
   end
 
   defp do_compile(opts) do
-    opts = Keyword.validate!(opts, [
-      :version,
-      :source_path,
-      :debug,
-      :validate_tools,
-    ])
+    opts =
+      Keyword.validate!(opts, [
+        :version,
+        :source_path,
+        :debug,
+        :validate_tools
+      ])
 
     version = opts[:version] || raise ArgumentError, "version is required"
     source_path = opts[:source_path] || raise ArgumentError, "source_path is required"
@@ -71,6 +73,7 @@ defmodule Defdo.TailwindBuilder.Builder do
     # Track build start
     start_time = System.monotonic_time()
     compilation_method = Core.get_compilation_method(version)
+
     Telemetry.track_event(:build, :start, %{
       version: version,
       source_path: source_path,
@@ -78,9 +81,12 @@ defmodule Defdo.TailwindBuilder.Builder do
       debug: debug
     })
 
-    with {:validate_tools, :ok} <- {:validate_tools, maybe_validate_tools_with_telemetry(version, validate_tools)},
-         {:validate_paths, {:ok, paths}} <- {:validate_paths, validate_and_get_paths_with_telemetry(source_path, version)},
-         {:compile, compilation_result} <- {:compile, execute_compilation_with_telemetry(version, paths, debug)} do
+    with {:validate_tools, :ok} <-
+           {:validate_tools, maybe_validate_tools_with_telemetry(version, validate_tools)},
+         {:validate_paths, {:ok, paths}} <-
+           {:validate_paths, validate_and_get_paths_with_telemetry(source_path, version)},
+         {:compile, compilation_result} <-
+           {:compile, execute_compilation_with_telemetry(version, paths, debug)} do
       Logger.debug("Compilation result: #{inspect(compilation_result)}")
 
       end_time = System.monotonic_time()
@@ -103,6 +109,7 @@ defmodule Defdo.TailwindBuilder.Builder do
       # Record comprehensive metrics
       plugins = extract_plugins_from_paths(paths)
       Metrics.record_build_metrics(version, plugins, duration_ms, output_size, :success)
+
       Telemetry.track_event(:build, :success, %{
         version: version,
         duration_ms: duration_ms,
@@ -120,6 +127,7 @@ defmodule Defdo.TailwindBuilder.Builder do
         plugins = extract_plugins_from_opts(opts)
         Metrics.record_error_metrics(:build, step, error)
         Metrics.record_build_metrics(version, plugins, duration_ms, 0, :error)
+
         Telemetry.track_event(:build, :error, %{
           version: version,
           step: step,
@@ -140,9 +148,10 @@ defmodule Defdo.TailwindBuilder.Builder do
     constraints = Core.get_version_constraints(version)
     required_tools = constraints.required_tools
 
-    missing_tools = Enum.reject(required_tools, fn tool ->
-      tool_available?(tool)
-    end)
+    missing_tools =
+      Enum.reject(required_tools, fn tool ->
+        tool_available?(tool)
+      end)
 
     case missing_tools do
       [] -> :ok
@@ -186,7 +195,8 @@ defmodule Defdo.TailwindBuilder.Builder do
   def execute_build_command(command, args, opts \\ []) do
     working_dir = Keyword.get(opts, :cd)
     debug = Keyword.get(opts, :debug, false)
-    timeout = Keyword.get(opts, :timeout, 900_000)  # 15 minutos default
+    # 15 minutos default
+    timeout = Keyword.get(opts, :timeout, 900_000)
     version = Keyword.get(opts, :version)
 
     # V4 uses Rust/Cargo, not pnpm/bun/napi
@@ -200,12 +210,16 @@ defmodule Defdo.TailwindBuilder.Builder do
     build_context = Process.get(:build_telemetry_context, %{})
 
     # Emit telemetry for command start
-    command_metadata = Map.merge(%{
-      command: command,
-      args: args,
-      working_dir: working_dir,
-      version: version
-    }, build_context)
+    command_metadata =
+      Map.merge(
+        %{
+          command: command,
+          args: args,
+          working_dir: working_dir,
+          version: version
+        },
+        build_context
+      )
 
     :telemetry.execute(
       [:tailwind_builder, :build, :command, :start],
@@ -214,12 +228,15 @@ defmodule Defdo.TailwindBuilder.Builder do
     )
 
     # Set environment variables for TailwindCSS v4.x builds
-    env_vars = case {command, version} do
-      {"pnpm", v} when is_binary(v) and binary_part(v, 0, 2) == "4." ->
-        [{"CARGO_PROFILE_RELEASE_LTO", "off"}, {"CARGO_TARGET_X86_64_PC_WINDOWS_MSVC_LINKER", "lld-link"}]
-      _ ->
+    env_vars =
+      if command == "pnpm" and version_is_v4?(version) do
+        [
+          {"CARGO_PROFILE_RELEASE_LTO", "off"},
+          {"CARGO_TARGET_X86_64_PC_WINDOWS_MSVC_LINKER", "lld-link"}
+        ] ++ rust_environment_vars()
+      else
         []
-    end
+      end
 
     system_opts = [
       cd: working_dir,
@@ -228,9 +245,10 @@ defmodule Defdo.TailwindBuilder.Builder do
     ]
 
     # Use Task.async/await for timeout support in Elixir 1.18+
-    task = Task.async(fn ->
-      System.cmd(command, args, system_opts)
-    end)
+    task =
+      Task.async(fn ->
+        System.cmd(command, args, system_opts)
+      end)
 
     try do
       case Task.await(task, timeout) do
@@ -239,6 +257,7 @@ defmodule Defdo.TailwindBuilder.Builder do
 
           # Emit telemetry for successful command completion
           success_metadata = Map.merge(command_metadata, %{result: :success, exit_code: 0})
+
           :telemetry.execute(
             [:tailwind_builder, :build, :command, :stop],
             %{system_time: System.system_time()},
@@ -252,11 +271,14 @@ defmodule Defdo.TailwindBuilder.Builder do
           Logger.error("Output: #{output}")
 
           # Emit telemetry for failed command completion
-          failure_metadata = Map.merge(command_metadata, %{
-            result: :error,
-            exit_code: exit_code,
-            error_output: String.slice(output, 0, 500) # Limit error output size
-          })
+          failure_metadata =
+            Map.merge(command_metadata, %{
+              result: :error,
+              exit_code: exit_code,
+              # Limit error output size
+              error_output: String.slice(output, 0, 500)
+            })
+
           :telemetry.execute(
             [:tailwind_builder, :build, :command, :stop],
             %{system_time: System.system_time()},
@@ -271,10 +293,12 @@ defmodule Defdo.TailwindBuilder.Builder do
         Logger.error("Command timed out after #{timeout}ms")
 
         # Emit telemetry for timeout
-        timeout_metadata = Map.merge(command_metadata, %{
-          result: :timeout,
-          timeout_ms: timeout
-        })
+        timeout_metadata =
+          Map.merge(command_metadata, %{
+            result: :timeout,
+            timeout_ms: timeout
+          })
+
         :telemetry.execute(
           [:tailwind_builder, :build, :command, :stop],
           %{system_time: System.system_time()},
@@ -284,7 +308,6 @@ defmodule Defdo.TailwindBuilder.Builder do
         {:error, {:timeout, timeout}}
     end
   end
-
 
   @doc """
   Obtiene las rutas de archivos necesarias para la compilación
@@ -315,15 +338,22 @@ defmodule Defdo.TailwindBuilder.Builder do
   # Telemetry-enhanced versions of internal functions
 
   defp maybe_validate_tools_with_telemetry(version, validate_flag) do
-    Telemetry.track_event(:build, :tool_validation_start, %{version: version, validate: validate_flag})
+    Telemetry.track_event(:build, :tool_validation_start, %{
+      version: version,
+      validate: validate_flag
+    })
 
     result = maybe_validate_tools(version, validate_flag)
 
     case result do
       :ok ->
         Telemetry.track_event(:build, :tool_validation_success, %{version: version})
+
       error ->
-        Telemetry.track_event(:build, :tool_validation_error, %{version: version, error: inspect(error)})
+        Telemetry.track_event(:build, :tool_validation_error, %{
+          version: version,
+          error: inspect(error)
+        })
     end
 
     result
@@ -331,7 +361,11 @@ defmodule Defdo.TailwindBuilder.Builder do
 
   defp validate_and_get_paths_with_telemetry(source_path, version) do
     start_time = System.monotonic_time()
-    Telemetry.track_event(:build, :path_validation_start, %{source_path: source_path, version: version})
+
+    Telemetry.track_event(:build, :path_validation_start, %{
+      source_path: source_path,
+      version: version
+    })
 
     result = validate_and_get_paths(source_path, version)
 
@@ -384,6 +418,7 @@ defmodule Defdo.TailwindBuilder.Builder do
           duration_ms: duration_ms,
           debug: debug
         })
+
         success
 
       {:error, _} = error ->
@@ -394,6 +429,7 @@ defmodule Defdo.TailwindBuilder.Builder do
           duration_ms: duration_ms,
           debug: debug
         })
+
         error
     end
   end
@@ -409,6 +445,7 @@ defmodule Defdo.TailwindBuilder.Builder do
     # Try to extract plugins from package.json or other config files
     try do
       package_json_path = Path.join(paths.tailwind_root, "package.json")
+
       if File.exists?(package_json_path) do
         package_json_path
         |> File.read!()
@@ -448,6 +485,7 @@ defmodule Defdo.TailwindBuilder.Builder do
     |> File.ls!()
     |> Enum.reduce(0, fn file, acc ->
       file_path = Path.join(dir, file)
+
       case File.stat(file_path) do
         {:ok, %{size: size, type: :regular}} -> acc + size
         {:ok, %{type: :directory}} -> acc + calculate_directory_size(file_path)
@@ -467,13 +505,14 @@ defmodule Defdo.TailwindBuilder.Builder do
           {:error, {:invalid_paths, "Required build paths not found"}}
         end
 
-      error -> error
+      error ->
+        error
     end
   end
 
   defp validate_paths_exist(paths) do
     File.exists?(paths.tailwind_root) and
-    (is_nil(paths.standalone_root) or File.exists?(paths.standalone_root))
+      (is_nil(paths.standalone_root) or File.exists?(paths.standalone_root))
   end
 
   defp execute_compilation(version, paths, debug) do
@@ -503,23 +542,28 @@ defmodule Defdo.TailwindBuilder.Builder do
     # TailwindCSS v4 uses pnpm workspace + Rust compilation (official method)
     Logger.info("Building TailwindCSS v4 using pnpm workspace + Rust (official method)")
 
+    ensure_turbo_env_passthrough(paths.tailwind_root)
+
     # Build pnpm commands following official GitHub Actions workflow
     install_step = {"pnpm install", "pnpm", ["install"], paths.tailwind_root}
 
     # Build the oxide crate (native compilation only)
-    oxide_build_step = {"pnpm oxide build", "pnpm", ["run", "--filter", "./crates/node", "build:platform"], paths.tailwind_root}
+    oxide_build_step =
+      {"pnpm oxide build", "pnpm", ["run", "--filter", "./crates/node", "build:platform"],
+       paths.tailwind_root}
 
     # Build the entire workspace first
     workspace_build_step = {"pnpm workspace build", "pnpm", ["run", "build"], paths.tailwind_root}
 
     # Build standalone binaries (native compilation only)
-    standalone_build_step = {"bun standalone build", "bun", ["run", "build"], Path.join(paths.tailwind_root, "packages/@tailwindcss-standalone")}
+    standalone_build_step =
+      {"bun standalone build", "bun", ["run", "build"],
+       Path.join(paths.tailwind_root, "packages/@tailwindcss-standalone")}
 
     steps = [install_step, oxide_build_step, workspace_build_step, standalone_build_step]
 
     execute_compilation_steps(steps, debug, version)
   end
-
 
   defp compile_v5(paths, debug, version) do
     # TailwindCSS v5 - assume continued Rust-based approach
@@ -553,47 +597,57 @@ defmodule Defdo.TailwindBuilder.Builder do
     # Get build context if available
     build_context = Process.get(:build_telemetry_context, %{})
 
-    result = Enum.reduce_while(steps, :ok, fn {step_name, command, args, working_dir}, _acc ->
-      Logger.info("Starting step: #{step_name}")
+    result =
+      Enum.reduce_while(steps, :ok, fn {step_name, command, args, working_dir}, _acc ->
+        Logger.info("Starting step: #{step_name}")
 
-      # Emit telemetry event for step start with build context
-      telemetry_metadata = Map.merge(%{step: step_name, version: version}, build_context)
-      Logger.info("[BUILDER] Emitting step start telemetry: #{inspect(telemetry_metadata)}")
-      :telemetry.execute(
-        [:tailwind_builder, :build, :step, :start],
-        %{system_time: System.system_time()},
-        telemetry_metadata
-      )
+        # Emit telemetry event for step start with build context
+        telemetry_metadata = Map.merge(%{step: step_name, version: version}, build_context)
+        Logger.info("[BUILDER] Emitting step start telemetry: #{inspect(telemetry_metadata)}")
 
-      case execute_build_command(command, args, cd: working_dir, debug: debug, version: version) do
-        {:ok, _output} ->
-          Logger.info("Completed step: #{step_name}")
+        :telemetry.execute(
+          [:tailwind_builder, :build, :step, :start],
+          %{system_time: System.system_time()},
+          telemetry_metadata
+        )
 
-          # Emit telemetry event for step completion with build context
-          completion_metadata = Map.merge(%{step: step_name, version: version, result: :success}, build_context)
-          Logger.info("[BUILDER] Emitting step stop telemetry: #{inspect(completion_metadata)}")
-          :telemetry.execute(
-            [:tailwind_builder, :build, :step, :stop],
-            %{system_time: System.system_time()},
-            completion_metadata
-          )
+        case execute_build_command(command, args, cd: working_dir, debug: debug, version: version) do
+          {:ok, _output} ->
+            Logger.info("Completed step: #{step_name}")
 
-          {:cont, :ok}
+            # Emit telemetry event for step completion with build context
+            completion_metadata =
+              Map.merge(%{step: step_name, version: version, result: :success}, build_context)
 
-        {:error, reason} ->
-          Logger.error("Failed step: #{step_name} - #{inspect(reason)}")
+            Logger.info("[BUILDER] Emitting step stop telemetry: #{inspect(completion_metadata)}")
 
-          # Emit telemetry event for step failure with build context
-          failure_metadata = Map.merge(%{step: step_name, version: version, result: :error, error: inspect(reason)}, build_context)
-          :telemetry.execute(
-            [:tailwind_builder, :build, :step, :stop],
-            %{system_time: System.system_time()},
-            failure_metadata
-          )
+            :telemetry.execute(
+              [:tailwind_builder, :build, :step, :stop],
+              %{system_time: System.system_time()},
+              completion_metadata
+            )
 
-          {:halt, {:error, {String.to_atom(step_name), reason}}}
-      end
-    end)
+            {:cont, :ok}
+
+          {:error, reason} ->
+            Logger.error("Failed step: #{step_name} - #{inspect(reason)}")
+
+            # Emit telemetry event for step failure with build context
+            failure_metadata =
+              Map.merge(
+                %{step: step_name, version: version, result: :error, error: inspect(reason)},
+                build_context
+              )
+
+            :telemetry.execute(
+              [:tailwind_builder, :build, :step, :stop],
+              %{system_time: System.system_time()},
+              failure_metadata
+            )
+
+            {:halt, {:error, {String.to_atom(step_name), reason}}}
+        end
+      end)
 
     # Convert :ok to {:ok, result} for consistency
     case result do
@@ -606,21 +660,98 @@ defmodule Defdo.TailwindBuilder.Builder do
     tailwind_root = Path.join(source_path, "tailwindcss-#{version}")
     standalone_root = Path.join([source_path, "tailwindcss-#{version}", "standalone-cli"])
 
-    {:ok, %{
-      tailwind_root: tailwind_root,
-      standalone_root: standalone_root,
-      dist_path: Path.join(standalone_root, "dist")
-    }}
+    {:ok,
+     %{
+       tailwind_root: tailwind_root,
+       standalone_root: standalone_root,
+       dist_path: Path.join(standalone_root, "dist")
+     }}
   end
 
   defp get_v4_paths(source_path, version) do
     tailwind_root = Path.join(source_path, "tailwindcss-#{version}")
-    standalone_root = Path.join([source_path, "tailwindcss-#{version}", "packages", "@tailwindcss-standalone"])
 
-    {:ok, %{
-      tailwind_root: tailwind_root,
-      standalone_root: standalone_root,
-      dist_path: Path.join(standalone_root, "dist")
-    }}
+    standalone_root =
+      Path.join([source_path, "tailwindcss-#{version}", "packages", "@tailwindcss-standalone"])
+
+    {:ok,
+     %{
+       tailwind_root: tailwind_root,
+       standalone_root: standalone_root,
+       dist_path: Path.join(standalone_root, "dist")
+     }}
+  end
+
+  defp rust_environment_vars do
+    rustup_home =
+      System.get_env("RUSTUP_HOME") ||
+        case System.cmd("rustup", ["show", "home"]) do
+          {out, 0} -> String.trim(out)
+          _ -> nil
+        end
+
+    cargo_home =
+      System.get_env("CARGO_HOME") ||
+        case rustup_home do
+          nil -> nil
+          home -> home
+        end
+
+    toolchain =
+      System.get_env("RUSTUP_TOOLCHAIN") ||
+        case System.cmd("rustup", ["show", "active-toolchain"]) do
+          {out, 0} ->
+            out
+            |> String.trim()
+            |> String.split()
+            |> List.first()
+
+          _ ->
+            nil
+        end
+
+    [
+      maybe_env("RUSTUP_HOME", rustup_home),
+      maybe_env("CARGO_HOME", cargo_home),
+      maybe_env("RUSTUP_TOOLCHAIN", toolchain)
+    ]
+    |> Enum.reject(&is_nil/1)
+  end
+
+  defp maybe_env(_key, nil), do: nil
+  defp maybe_env(key, value), do: {key, value}
+
+  defp version_is_v4?(version) when is_binary(version), do: String.starts_with?(version, "4.")
+  defp version_is_v4?(_), do: false
+
+  defp ensure_turbo_env_passthrough(tailwind_root) do
+    turbo_path = Path.join(tailwind_root, "turbo.json")
+
+    with true <- File.exists?(turbo_path),
+         {:ok, content} <- File.read(turbo_path),
+         [_, inner] <- Regex.run(~r/"globalPassThroughEnv":\s*\[(.*?)\]/s, content),
+         {:ok, envs} <- Jason.decode("[" <> inner <> "]") do
+      required = ["RUSTUP_HOME", "CARGO_HOME", "RUSTUP_TOOLCHAIN"]
+      updated_envs = Enum.uniq(envs ++ required)
+
+      if updated_envs != envs do
+        new_inner =
+          updated_envs
+          |> Enum.map(&Jason.encode!/1)
+          |> Enum.join(", ")
+
+        updated_content =
+          String.replace(
+            content,
+            "\"globalPassThroughEnv\": [" <> inner <> "]",
+            "\"globalPassThroughEnv\": [" <> new_inner <> "]",
+            global: false
+          )
+
+        File.write!(turbo_path, updated_content)
+      end
+    else
+      _ -> :ok
+    end
   end
 end

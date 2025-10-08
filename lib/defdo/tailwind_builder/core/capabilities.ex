@@ -71,8 +71,10 @@ defmodule Defdo.TailwindBuilder.Core.Capabilities do
     case get_major_version(version) do
       :v3 -> true
       :v4 -> true
-      :v5 -> false  # Future version - not yet in production
-      :v6 -> false  # Future version - not yet in production
+      # Future version - not yet in production
+      :v5 -> false
+      # Future version - not yet in production
+      :v6 -> false
       :unsupported -> false
     end
   end
@@ -87,21 +89,36 @@ defmodule Defdo.TailwindBuilder.Core.Capabilities do
       else
         case version do
           # Parse major version number more precisely
-          "3" <> _ -> :v3
-          "4" <> _ -> :v4
-          "5" <> _ -> :v5  # Future v5 support
-          "6" <> _ -> :v6  # Future v6 support
+          "3" <> _ ->
+            :v3
+
+          "4" <> _ ->
+            :v4
+
+          # Future v5 support
+          "5" <> _ ->
+            :v5
+
+          # Future v6 support
+          "6" <> _ ->
+            :v6
+
           _ ->
             # Fallback to semantic comparison for more complex version strings
             case Version.compare(version, "4.0.0") do
-              :lt -> :v3
+              :lt ->
+                :v3
+
               _ ->
                 case Version.compare(version, "5.0.0") do
-                  :lt -> :v4
+                  :lt ->
+                    :v4
+
                   _ ->
                     case Version.compare(version, "6.0.0") do
                       :lt -> :v5
-                      _ -> :v6  # Assume v6+ uses similar pattern to v4-v5
+                      # Assume v6+ uses similar pattern to v4-v5
+                      _ -> :v6
                     end
                 end
             end
@@ -118,9 +135,12 @@ defmodule Defdo.TailwindBuilder.Core.Capabilities do
       compilation_method: :npm,
       cross_compilation: true,
       supported_architectures: [
-        "linux-x64", "linux-arm64", 
-        "darwin-x64", "darwin-arm64", 
-        "win32-x64", "win32-arm64",
+        "linux-x64",
+        "linux-arm64",
+        "darwin-x64",
+        "darwin-arm64",
+        "win32-x64",
+        "win32-arm64",
         "freebsd-x64"
       ],
       required_tools: ["npm", "node"],
@@ -219,7 +239,8 @@ defmodule Defdo.TailwindBuilder.Core.Capabilities do
       required_tools: ["cargo", "rustc"],
       optional_tools: ["node", "pnpm", "strip"],
       runtime_constraints: %{
-        rust_version: ">= 1.75.0",  # Potentially newer Rust requirement
+        # Potentially newer Rust requirement
+        rust_version: ">= 1.75.0",
         cargo_version: ">= 1.75.0"
       },
       file_structure: %{
@@ -270,7 +291,8 @@ defmodule Defdo.TailwindBuilder.Core.Capabilities do
       required_tools: ["cargo", "rustc"],
       optional_tools: ["node", "pnpm", "strip"],
       runtime_constraints: %{
-        rust_version: ">= 1.80.0",  # Future Rust requirement
+        # Future Rust requirement
+        rust_version: ">= 1.80.0",
         cargo_version: ">= 1.80.0"
       },
       file_structure: %{

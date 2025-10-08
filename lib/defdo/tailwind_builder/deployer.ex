@@ -57,6 +57,8 @@ defmodule Defdo.TailwindBuilder.Deployer do
 
     with {:find_binaries, {:ok, binaries}} <-
            {:find_binaries, find_distributable_binaries(source_path, version)},
+         {:filter_binaries, {:ok, binaries}} <-
+           {:filter_binaries, filter_binaries_for_deploy(binaries, version)},
          {:validate, :ok} <- {:validate, maybe_validate_binaries(binaries, validate_binaries)},
          {:deploy_binaries, {:ok, deployed}} <-
            {:deploy_binaries, deploy_binaries(binaries, destination, opts)},
@@ -218,6 +220,26 @@ defmodule Defdo.TailwindBuilder.Deployer do
 
   defp maybe_generate_manifest(_deployed_files, _version, false), do: {:ok, nil}
 
+  defp filter_binaries_for_deploy(binaries, version) do
+    case Core.get_version_constraints(version) do
+      %{major_version: :v4} ->
+        host_arch = Core.get_host_architecture()
+
+        filtered =
+          Enum.filter(binaries, fn %{architecture: arch} ->
+            match_architecture?(arch, host_arch)
+          end)
+
+        case filtered do
+          [] -> {:error, {:no_binaries_for_host, host_arch}}
+          list -> {:ok, list}
+        end
+
+      _ ->
+        {:ok, binaries}
+    end
+  end
+
   defp get_dist_directory(source_path, version) do
     case Core.get_version_constraints(version) do
       %{major_version: :v3} ->
@@ -321,16 +343,58 @@ defmodule Defdo.TailwindBuilder.Deployer do
   end
 
   defp extract_architecture_from_filename(filename) do
+    normalized = String.downcase(filename)
+
     cond do
-      filename =~ "linux" && filename =~ "x64" -> "linux-x64"
-      filename =~ "linux" && filename =~ "arm64" -> "linux-arm64"
-      filename =~ "darwin" && filename =~ "x64" -> "darwin-x64"
-      filename =~ "darwin" && filename =~ "arm64" -> "darwin-arm64"
-      filename =~ "win32" && filename =~ "x64" -> "win32-x64"
-      filename =~ "win32" && filename =~ "arm64" -> "win32-arm64"
-      filename =~ "freebsd" -> "freebsd-x64"
-      true -> "unknown"
+      matches_any?(normalized, ["darwin", "macos", "apple"]) &&
+          matches_any?(normalized, ["arm64", "aarch64"]) ->
+        "darwin-arm64"
+
+      matches_any?(normalized, ["darwin", "macos", "apple"]) &&
+          matches_any?(normalized, ["x86_64", "x64"]) ->
+        "darwin-x64"
+
+      String.contains?(normalized, "linux") &&
+          matches_any?(normalized, ["arm64", "aarch64"]) ->
+        "linux-arm64"
+
+      String.contains?(normalized, "linux") && matches_any?(normalized, ["armv7", "arm"]) ->
+        "linux-arm"
+
+      String.contains?(normalized, "linux") && matches_any?(normalized, ["x86_64", "x64"]) ->
+        "linux-x64"
+
+      matches_any?(normalized, ["win32", "windows"]) &&
+          matches_any?(normalized, ["arm64", "aarch64"]) ->
+        "win32-arm64"
+
+      matches_any?(normalized, ["win32", "windows"]) &&
+          matches_any?(normalized, ["x86_64", "x64"]) ->
+        "win32-x64"
+
+      String.contains?(normalized, "freebsd") ->
+        "freebsd-x64"
+
+      true ->
+        "unknown"
     end
+  end
+
+  defp matches_any?(string, patterns) do
+    Enum.any?(patterns, &String.contains?(string, &1))
+  end
+
+  defp match_architecture?("unknown", _host), do: false
+
+  defp match_architecture?(binary_arch, host_arch) do
+    normalize_arch(binary_arch) == normalize_arch(host_arch)
+  end
+
+  defp normalize_arch(arch) when is_binary(arch) do
+    arch
+    |> String.replace(~r/-gnu$/, "")
+    |> String.replace(~r/-musl$/, "")
+    |> String.replace(~r/-msvc$/, "")
   end
 
   defp format_file_info({:ok, deployed_info}) do

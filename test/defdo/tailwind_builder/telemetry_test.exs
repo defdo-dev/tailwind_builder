@@ -1,6 +1,6 @@
 defmodule Defdo.TailwindBuilder.TelemetryTest do
   use ExUnit.Case, async: false
-  
+
   alias Defdo.TailwindBuilder.Telemetry
 
   @moduletag :telemetry
@@ -8,12 +8,13 @@ defmodule Defdo.TailwindBuilder.TelemetryTest do
   setup do
     # Ensure telemetry is started for tests
     case Process.whereis(Telemetry) do
-      nil -> 
+      nil ->
         {:ok, _} = start_supervised({Telemetry, []})
-      _pid -> 
+
+      _pid ->
         :ok
     end
-    
+
     :ok
   end
 
@@ -26,7 +27,7 @@ defmodule Defdo.TailwindBuilder.TelemetryTest do
 
     test "tracks telemetry stats" do
       stats = Telemetry.get_stats()
-      
+
       assert is_map(stats)
       assert Map.has_key?(stats, :enabled)
       assert Map.has_key?(stats, :active_spans)
@@ -35,16 +36,17 @@ defmodule Defdo.TailwindBuilder.TelemetryTest do
 
     test "can start and end spans" do
       span_id = Telemetry.start_span(:download, %{version: "test"})
-      
+
       assert is_binary(span_id)
-      assert byte_size(span_id) == 16  # 8 bytes encoded as hex
-      
+      # 8 bytes encoded as hex
+      assert byte_size(span_id) == 16
+
       active_spans = Telemetry.get_active_spans()
       assert length(active_spans) >= 1
-      
+
       # End the span
       :ok = Telemetry.end_span(span_id, :success, %{size: 1024})
-      
+
       # Active spans should be updated
       new_active_spans = Telemetry.get_active_spans()
       assert length(new_active_spans) < length(active_spans)
@@ -70,29 +72,35 @@ defmodule Defdo.TailwindBuilder.TelemetryTest do
 
   describe "span tracking" do
     test "track_download convenience function" do
-      result = Telemetry.track_download("4.1.11", fn ->
-        Process.sleep(10)  # Simulate work
-        {:ok, "download_result"}
-      end)
-      
+      result =
+        Telemetry.track_download("4.1.11", fn ->
+          # Simulate work
+          Process.sleep(10)
+          {:ok, "download_result"}
+        end)
+
       assert result == {:ok, "download_result"}
     end
 
     test "track_build convenience function" do
-      result = Telemetry.track_build("4.1.11", ["daisyui"], fn ->
-        Process.sleep(10)  # Simulate work
-        {:ok, "build_result"}
-      end)
-      
+      result =
+        Telemetry.track_build("4.1.11", ["daisyui"], fn ->
+          # Simulate work
+          Process.sleep(10)
+          {:ok, "build_result"}
+        end)
+
       assert result == {:ok, "build_result"}
     end
 
     test "track_deploy convenience function" do
-      result = Telemetry.track_deploy(:r2, fn ->
-        Process.sleep(10)  # Simulate work
-        {:ok, "deploy_result"}
-      end)
-      
+      result =
+        Telemetry.track_deploy(:r2, fn ->
+          # Simulate work
+          Process.sleep(10)
+          {:ok, "deploy_result"}
+        end)
+
       assert result == {:ok, "deploy_result"}
     end
 
@@ -109,7 +117,7 @@ defmodule Defdo.TailwindBuilder.TelemetryTest do
     test "respects enabled/disabled state" do
       # Telemetry should be enabled by default in tests
       assert Telemetry.enabled?()
-      
+
       # Test that operations still work when disabled
       # (In a real scenario, we'd test with telemetry disabled)
     end

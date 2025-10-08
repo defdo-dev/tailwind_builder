@@ -53,7 +53,8 @@ defmodule Defdo.TailwindBuilder.V4BuildTest do
     test "compilation method detection" do
       assert Core.get_compilation_method("3.4.17") == :npm
       assert Core.get_compilation_method("4.1.11") == :pnpm_workspace
-      assert Core.get_compilation_method("5.0.0") == :cargo  # Future v5
+      # Future v5
+      assert Core.get_compilation_method("5.0.0") == :cargo
     end
 
     test "cross-compilation capability check" do

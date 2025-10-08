@@ -1,13 +1,13 @@
 defmodule Defdo.TailwindBuilder.Core do
   @moduledoc """
   Core API that exposes technical limitations and capabilities.
-  
+
   This is the main interface for querying technical constraints without
   business logic. Upper layers can use this API to make informed decisions
   about what operations are technically possible.
-  
+
   ## Usage Examples
-  
+
       # Check if cross-compilation is technically possible
       iex> Core.can_cross_compile?("4.1.11", "linux-x64")
       false
@@ -117,8 +117,8 @@ defmodule Defdo.TailwindBuilder.Core do
   Quick check: can we cross-compile from current host to target?
   """
   def can_cross_compile?(version, target_arch) do
-    supports_cross_compilation?(version) and 
-    can_compile_for_target?(version, target_arch)
+    supports_cross_compilation?(version) and
+      can_compile_for_target?(version, target_arch)
   end
 
   @doc """
@@ -134,10 +134,10 @@ defmodule Defdo.TailwindBuilder.Core do
   """
   def can_compile_on_current_system?(version) do
     case validate_technical_feasibility(%{
-      version: version,
-      target_arch: get_host_architecture(),
-      plugins: []
-    }) do
+           version: version,
+           target_arch: get_host_architecture(),
+           plugins: []
+         }) do
       {:ok, :technically_feasible} -> true
       {:error, _} -> false
     end
@@ -149,7 +149,7 @@ defmodule Defdo.TailwindBuilder.Core do
   def get_version_summary(version) do
     constraints = get_version_constraints(version)
     compilation_details = get_compilation_details(version)
-    
+
     %{
       version: version,
       compilation_method: constraints.compilation_method,
@@ -168,14 +168,15 @@ defmodule Defdo.TailwindBuilder.Core do
   def compare_versions(version1, version2) do
     summary1 = get_version_summary(version1)
     summary2 = get_version_summary(version2)
-    
+
     %{
       version1: summary1,
       version2: summary2,
       differences: %{
         compilation_method: summary1.compilation_method != summary2.compilation_method,
         cross_compilation: summary1.cross_compilation != summary2.cross_compilation,
-        architecture_support: summary1.supported_architectures != summary2.supported_architectures,
+        architecture_support:
+          summary1.supported_architectures != summary2.supported_architectures,
         tool_requirements: summary1.required_tools != summary2.required_tools
       }
     }
@@ -224,12 +225,12 @@ defmodule Defdo.TailwindBuilder.Core do
   """
   def analyze_extracted_structure(extraction_path, version) do
     constraints = get_version_constraints(version)
-    
+
     case constraints.major_version do
       :v3 ->
         standalone_path = Path.join(extraction_path, "standalone-cli")
         package_json_path = Path.join(standalone_path, "package.json")
-        
+
         %{
           version: version,
           major_version: :v3,
@@ -238,11 +239,11 @@ defmodule Defdo.TailwindBuilder.Core do
           package_json_exists: File.exists?(package_json_path),
           structure_type: "standalone-cli"
         }
-        
+
       :v4 ->
         packages_path = Path.join([extraction_path, "packages", "@tailwindcss-standalone"])
         package_json_path = Path.join(packages_path, "package.json")
-        
+
         %{
           version: version,
           major_version: :v4,
@@ -251,7 +252,7 @@ defmodule Defdo.TailwindBuilder.Core do
           package_json_exists: File.exists?(package_json_path),
           structure_type: "packages/@tailwindcss-standalone"
         }
-        
+
       _ ->
         %{
           version: version,

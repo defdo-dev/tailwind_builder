@@ -1,7 +1,7 @@
 defmodule Defdo.TailwindBuilder.Metrics do
   @moduledoc """
   Specialized metrics collection and reporting for TailwindBuilder.
-  
+
   Provides:
   - Performance metrics for async operations
   - Resource utilization tracking  
@@ -22,23 +22,24 @@ defmodule Defdo.TailwindBuilder.Metrics do
       version_major: extract_major_version(version),
       status: status
     }
-    
+
     # Core download metrics
     Telemetry.track_metric("download.count", 1, base_tags)
     Telemetry.track_metric("download.size_bytes", size_bytes, base_tags)
     Telemetry.track_metric("download.duration_ms", duration_ms, base_tags)
-    
+
     # Derived metrics
     if duration_ms > 0 do
-      throughput_mbps = (size_bytes * 8) / (duration_ms * 1000) # Mbps
+      # Mbps
+      throughput_mbps = size_bytes * 8 / (duration_ms * 1000)
       Telemetry.track_metric("download.throughput_mbps", throughput_mbps, base_tags)
     end
-    
+
     # Error tracking
     if status == :error do
       Telemetry.track_metric("download.errors", 1, base_tags)
     end
-    
+
     :ok
   end
 
@@ -51,23 +52,24 @@ defmodule Defdo.TailwindBuilder.Metrics do
       plugin_count: length(plugins),
       status: status
     }
-    
+
     # Core build metrics
     Telemetry.track_metric("build.count", 1, base_tags)
     Telemetry.track_metric("build.duration_ms", duration_ms, base_tags)
     Telemetry.track_metric("build.output_size_bytes", output_size, base_tags)
-    
+
     # Plugin-specific metrics
     Enum.each(plugins, fn plugin ->
       Telemetry.track_metric("build.plugin_usage", 1, %{plugin: plugin})
     end)
-    
+
     # Performance indicators
     if duration_ms > 0 and output_size > 0 do
-      build_rate = output_size / duration_ms # bytes per ms
+      # bytes per ms
+      build_rate = output_size / duration_ms
       Telemetry.track_metric("build.rate_bytes_per_ms", build_rate, base_tags)
     end
-    
+
     :ok
   end
 
@@ -79,19 +81,20 @@ defmodule Defdo.TailwindBuilder.Metrics do
       target: target,
       status: status
     }
-    
+
     # Core deployment metrics
     Telemetry.track_metric("deploy.count", 1, base_tags)
     Telemetry.track_metric("deploy.duration_ms", duration_ms, base_tags)
     Telemetry.track_metric("deploy.file_count", file_count, base_tags)
     Telemetry.track_metric("deploy.total_size_bytes", total_size, base_tags)
-    
+
     # Upload performance
     if duration_ms > 0 and total_size > 0 do
-      upload_rate = total_size / duration_ms # bytes per ms
+      # bytes per ms
+      upload_rate = total_size / duration_ms
       Telemetry.track_metric("deploy.upload_rate_bytes_per_ms", upload_rate, base_tags)
     end
-    
+
     :ok
   end
 
@@ -101,18 +104,18 @@ defmodule Defdo.TailwindBuilder.Metrics do
   def record_resource_metrics do
     # Memory usage
     {:memory, memory_info} = :erlang.memory() |> List.keyfind(:memory, 0, {:memory, []})
-    
+
     memory_data = Enum.into(memory_info, %{})
-    
+
     Telemetry.track_metric("system.memory.total", Map.get(memory_data, :total, 0))
     Telemetry.track_metric("system.memory.processes", Map.get(memory_data, :processes, 0))
     Telemetry.track_metric("system.memory.ets", Map.get(memory_data, :ets, 0))
     Telemetry.track_metric("system.memory.binary", Map.get(memory_data, :binary, 0))
-    
+
     # Process count
     process_count = :erlang.system_info(:process_count)
     Telemetry.track_metric("system.processes.count", process_count)
-    
+
     # Load average (if available)
     try do
       if Code.ensure_loaded?(:cpu_sup) do
@@ -124,9 +127,10 @@ defmodule Defdo.TailwindBuilder.Metrics do
         :ok
       end
     rescue
-      UndefinedFunctionError -> :ok  # cpu_sup not available
+      # cpu_sup not available
+      UndefinedFunctionError -> :ok
     end
-    
+
     :ok
   end
 
@@ -138,9 +142,9 @@ defmodule Defdo.TailwindBuilder.Metrics do
       operation: operation,
       error_type: error_type
     }
-    
+
     Telemetry.track_metric("errors.count", 1, base_tags)
-    
+
     # Log structured error for analysis
     Telemetry.log(:error, "Operation failed", %{
       operation: operation,
@@ -148,7 +152,7 @@ defmodule Defdo.TailwindBuilder.Metrics do
       error_details: error_details,
       timestamp: DateTime.utc_now()
     })
-    
+
     :ok
   end
 
@@ -160,15 +164,15 @@ defmodule Defdo.TailwindBuilder.Metrics do
       operation: operation,
       result: hit_or_miss
     }
-    
+
     Telemetry.track_metric("cache.requests", 1, base_tags)
-    
+
     if hit_or_miss == :hit do
       Telemetry.track_metric("cache.hits", 1, %{operation: operation})
     else
       Telemetry.track_metric("cache.misses", 1, %{operation: operation})
     end
-    
+
     :ok
   end
 
@@ -177,19 +181,19 @@ defmodule Defdo.TailwindBuilder.Metrics do
   """
   def record_sla_metrics(operation, start_time, end_time, success?) do
     duration_ms = System.convert_time_unit(end_time - start_time, :native, :millisecond)
-    
+
     base_tags = %{operation: operation}
-    
+
     # Availability metrics
     if success? do
       Telemetry.track_metric("sla.success", 1, base_tags)
     else
       Telemetry.track_metric("sla.failure", 1, base_tags)
     end
-    
+
     # Latency SLA tracking
     sla_thresholds = get_sla_thresholds(operation)
-    
+
     Enum.each(sla_thresholds, fn {threshold_name, threshold_ms} ->
       if duration_ms <= threshold_ms do
         Telemetry.track_metric("sla.#{threshold_name}_met", 1, base_tags)
@@ -197,7 +201,7 @@ defmodule Defdo.TailwindBuilder.Metrics do
         Telemetry.track_metric("sla.#{threshold_name}_missed", 1, base_tags)
       end
     end)
-    
+
     :ok
   end
 
@@ -209,26 +213,26 @@ defmodule Defdo.TailwindBuilder.Metrics do
       operation: operation,
       version_major: extract_major_version(version)
     }
-    
+
     # Usage patterns
     Telemetry.track_metric("usage.operations", 1, base_tags)
-    
+
     # Version adoption
     Telemetry.track_metric("versions.usage", 1, %{version: version})
-    
+
     # User agent tracking (if provided)
     if user_agent do
       parsed_agent = parse_user_agent(user_agent)
       Telemetry.track_metric("usage.client", 1, parsed_agent)
     end
-    
+
     # Time-based patterns
     hour = DateTime.utc_now().hour
     day_of_week = Date.day_of_week(Date.utc_today())
-    
+
     Telemetry.track_metric("usage.by_hour", 1, %{hour: hour})
     Telemetry.track_metric("usage.by_day", 1, %{day_of_week: day_of_week})
-    
+
     :ok
   end
 
@@ -237,7 +241,7 @@ defmodule Defdo.TailwindBuilder.Metrics do
   """
   def get_metrics_summary(time_window_minutes \\ 60) do
     stats = Telemetry.get_stats()
-    
+
     %{
       system: %{
         enabled: Map.get(stats, :enabled, false),
@@ -261,22 +265,37 @@ defmodule Defdo.TailwindBuilder.Metrics do
 
   defp get_sla_thresholds(operation) do
     case operation do
-      :download -> [
-        {:p95, 30_000},    # 30 seconds
-        {:p99, 60_000}     # 60 seconds
-      ]
-      :build -> [
-        {:p95, 120_000},   # 2 minutes
-        {:p99, 300_000}    # 5 minutes
-      ]
-      :deploy -> [
-        {:p95, 60_000},    # 1 minute
-        {:p99, 180_000}    # 3 minutes
-      ]
-      _ -> [
-        {:p95, 10_000},    # 10 seconds
-        {:p99, 30_000}     # 30 seconds
-      ]
+      :download ->
+        [
+          # 30 seconds
+          {:p95, 30_000},
+          # 60 seconds
+          {:p99, 60_000}
+        ]
+
+      :build ->
+        [
+          # 2 minutes
+          {:p95, 120_000},
+          # 5 minutes
+          {:p99, 300_000}
+        ]
+
+      :deploy ->
+        [
+          # 1 minute
+          {:p95, 60_000},
+          # 3 minutes
+          {:p99, 180_000}
+        ]
+
+      _ ->
+        [
+          # 10 seconds
+          {:p95, 10_000},
+          # 30 seconds
+          {:p99, 30_000}
+        ]
     end
   end
 

@@ -1,7 +1,7 @@
 defmodule Defdo.TailwindBuilder.ConfigProviders.TestingConfigProvider do
   @moduledoc """
   ConfigProvider optimized for testing and CI/CD environments.
-  
+
   Features:
   - Fast, deterministic configurations for testing
   - Mock-friendly settings for isolated testing
@@ -9,7 +9,7 @@ defmodule Defdo.TailwindBuilder.ConfigProviders.TestingConfigProvider do
   - Predictable behavior for automated testing
   - Support for test fixtures and mocks
   """
-  
+
   @behaviour Defdo.TailwindBuilder.ConfigProvider
 
   # Minimal plugin set for testing
@@ -47,7 +47,7 @@ defmodule Defdo.TailwindBuilder.ConfigProviders.TestingConfigProvider do
     Application.get_env(:tailwind_builder, :test_plugins, @testing_supported_plugins)
   end
 
-  @impl true  
+  @impl true
   def get_known_checksums do
     Application.get_env(:tailwind_builder, :test_checksums, @testing_checksums)
   end
@@ -58,11 +58,11 @@ defmodule Defdo.TailwindBuilder.ConfigProviders.TestingConfigProvider do
       # Allow test versions
       String.starts_with?(version, "test-") or String.starts_with?(version, "mock-") ->
         :allowed
-      
+
       # Allow all known versions for testing
       Map.has_key?(@testing_checksums, version) ->
         :allowed
-      
+
       # Allow unknown versions in test mode (for error testing)
       true ->
         :allowed
@@ -73,12 +73,18 @@ defmodule Defdo.TailwindBuilder.ConfigProviders.TestingConfigProvider do
   def get_operation_limits do
     %{
       # Fast timeouts for quick test execution
-      download_timeout: 10_000,       # 10 seconds
-      build_timeout: 30_000,          # 30 seconds
-      max_file_size: 50_000_000,      # 50MB (smaller for tests)
-      max_concurrent_downloads: 10,   # High concurrency for parallel tests
-      retry_attempts: 1,              # Minimal retries for fast failure
-      cache_ttl: 60                   # 1 minute cache (short for tests)
+      # 10 seconds
+      download_timeout: 10_000,
+      # 30 seconds
+      build_timeout: 30_000,
+      # 50MB (smaller for tests)
+      max_file_size: 50_000_000,
+      # High concurrency for parallel tests
+      max_concurrent_downloads: 10,
+      # Minimal retries for fast failure
+      retry_attempts: 1,
+      # 1 minute cache (short for tests)
+      cache_ttl: 60
     }
   end
 
@@ -88,23 +94,31 @@ defmodule Defdo.TailwindBuilder.ConfigProviders.TestingConfigProvider do
       :test ->
         %{
           destination: "/tmp/tailwind_test_builds",
-          cleanup_after: true,         # Clean up after tests
-          validate_binaries: false,    # Skip validation for speed
-          generate_manifest: false     # Skip manifest generation
+          # Clean up after tests
+          cleanup_after: true,
+          # Skip validation for speed
+          validate_binaries: false,
+          # Skip manifest generation
+          generate_manifest: false
         }
-      
+
       :mock ->
         %{
-          destination: :memory,        # In-memory deployment for testing
-          simulate_only: true,         # Don't actually deploy
-          track_operations: true       # Track for test assertions
+          # In-memory deployment for testing
+          destination: :memory,
+          # Don't actually deploy
+          simulate_only: true,
+          # Track for test assertions
+          track_operations: true
         }
-      
+
       :ci ->
         %{
           destination: "./ci_artifacts",
-          cleanup_after: false,        # Keep for CI artifact collection
-          validate_binaries: true,     # Validate in CI
+          # Keep for CI artifact collection
+          cleanup_after: false,
+          # Validate in CI
+          validate_binaries: true,
           generate_manifest: true,
           compress_artifacts: true
         }
@@ -115,14 +129,21 @@ defmodule Defdo.TailwindBuilder.ConfigProviders.TestingConfigProvider do
   def get_build_policies do
     %{
       # Test-optimized build policies
-      allow_experimental_features: true,   # Test experimental features
-      skip_non_critical_validations: true, # Speed up tests
+      # Test experimental features
+      allow_experimental_features: true,
+      # Speed up tests
+      skip_non_critical_validations: true,
       enable_debug_symbols: false,
-      verbose_logging: false,              # Quiet for clean test output
-      parallel_builds: true,               # Fast parallel execution
-      incremental_builds: false,           # Full builds for deterministic tests
-      deterministic_builds: true,          # Reproducible builds for tests
-      mock_external_tools: true            # Use mocks when possible
+      # Quiet for clean test output
+      verbose_logging: false,
+      # Fast parallel execution
+      parallel_builds: true,
+      # Full builds for deterministic tests
+      incremental_builds: false,
+      # Reproducible builds for tests
+      deterministic_builds: true,
+      # Use mocks when possible
+      mock_external_tools: true
     }
   end
 
@@ -131,12 +152,18 @@ defmodule Defdo.TailwindBuilder.ConfigProviders.TestingConfigProvider do
     %{
       # Testing deployment policies
       skip_production_checks: true,
-      allow_overwrite: true,          # Allow overwriting in tests
-      backup_existing: false,         # No backup needed for tests
-      notify_on_deploy: false,        # No notifications in tests
-      auto_cleanup_old: true,         # Clean up test artifacts
-      max_versions_kept: 3,           # Keep minimal versions
-      track_deployments: true         # Track for test verification
+      # Allow overwriting in tests
+      allow_overwrite: true,
+      # No backup needed for tests
+      backup_existing: false,
+      # No notifications in tests
+      notify_on_deploy: false,
+      # Clean up test artifacts
+      auto_cleanup_old: true,
+      # Keep minimal versions
+      max_versions_kept: 3,
+      # Track for test verification
+      track_deployments: true
     }
   end
 
@@ -175,14 +202,17 @@ defmodule Defdo.TailwindBuilder.ConfigProviders.TestingConfigProvider do
   """
   def get_logging_config do
     %{
-      level: :warning,               # Minimal logging in tests
+      # Minimal logging in tests
+      level: :warning,
       enable_module_logging: false,
       log_http_requests: get_env_boolean(:log_http_in_tests, false),
       log_file_operations: false,
       log_compilation_steps: false,
       pretty_print: false,
-      capture_logs: true,            # Capture for test assertions
-      log_to_file: false            # Don't write log files in tests
+      # Capture for test assertions
+      capture_logs: true,
+      # Don't write log files in tests
+      log_to_file: false
     }
   end
 
@@ -217,7 +247,8 @@ defmodule Defdo.TailwindBuilder.ConfigProviders.TestingConfigProvider do
       mock_npm_registry: true,
       mock_github_api: true,
       predictable_responses: true,
-      response_delay_ms: 0           # No artificial delays in tests
+      # No artificial delays in tests
+      response_delay_ms: 0
     }
   end
 
@@ -228,10 +259,13 @@ defmodule Defdo.TailwindBuilder.ConfigProviders.TestingConfigProvider do
     %{
       parallel_test_execution: true,
       max_test_concurrency: System.schedulers_online(),
-      test_isolation: :process,      # Process-level isolation
+      # Process-level isolation
+      test_isolation: :process,
       cleanup_between_tests: true,
-      memory_limit_mb: 1000,        # 1GB memory limit for tests
-      timeout_multiplier: 1.0       # No timeout extension
+      # 1GB memory limit for tests
+      memory_limit_mb: 1000,
+      # No timeout extension
+      timeout_multiplier: 1.0
     }
   end
 
@@ -243,8 +277,10 @@ defmodule Defdo.TailwindBuilder.ConfigProviders.TestingConfigProvider do
       enable_detailed_diffs: true,
       capture_intermediate_states: true,
       track_operation_history: true,
-      enable_property_testing: false,  # Disable by default for speed
-      fuzzing_enabled: false,          # Disable by default for speed
+      # Disable by default for speed
+      enable_property_testing: false,
+      # Disable by default for speed
+      fuzzing_enabled: false,
       regression_testing: true
     }
   end
@@ -265,7 +301,8 @@ defmodule Defdo.TailwindBuilder.ConfigProviders.TestingConfigProvider do
       ci_provider: detect_ci_provider(),
       artifact_collection: true,
       coverage_reporting: true,
-      performance_benchmarking: false, # Usually disabled for speed
+      # Usually disabled for speed
+      performance_benchmarking: false,
       matrix_testing: true,
       cache_ci_dependencies: true,
       parallel_jobs: get_ci_parallel_jobs()
@@ -332,19 +369,24 @@ defmodule Defdo.TailwindBuilder.ConfigProviders.TestingConfigProvider do
   def get_telemetry_config do
     %{
       enabled: true,
-      level: :warning,  # Minimal logging in tests
+      # Minimal logging in tests
+      level: :warning,
       backends: [:console],
-      sample_rate: 1.0,  # Sample all for test verification
-      trace_retention_hours: 1,  # Very short retention
+      # Sample all for test verification
+      sample_rate: 1.0,
+      # Very short retention
+      trace_retention_hours: 1,
       detailed_logging: false,
-      performance_monitoring: false,  # Disabled for test speed
+      # Disabled for test speed
+      performance_monitoring: false,
       error_tracking: :test,
       alert_on_errors: false,
       alert_on_high_latency: false,
       metrics_collection: %{
         system_metrics: false,
         business_metrics: false,
-        performance_metrics: true,  # For performance regression testing
+        # For performance regression testing
+        performance_metrics: true,
         test_metrics: true
       },
       test_integration: %{

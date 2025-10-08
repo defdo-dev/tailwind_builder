@@ -57,13 +57,14 @@ defmodule Defdo.TailwindBuilder.BuildMonitor do
 
     Logger.info("[BUILD_MONITOR] Started monitoring for #{inspect(subscriber_pid)}")
 
-    {:ok, %{
-      subscriber: subscriber_pid,
-      current_step: nil,
-      start_time: System.monotonic_time(),
-      steps_completed: 0,
-      total_steps: nil
-    }}
+    {:ok,
+     %{
+       subscriber: subscriber_pid,
+       current_step: nil,
+       start_time: System.monotonic_time(),
+       steps_completed: 0,
+       total_steps: nil
+     }}
   end
 
   @impl true
@@ -98,7 +99,9 @@ defmodule Defdo.TailwindBuilder.BuildMonitor do
 
   ## Private Functions
 
-  defp format_event(%{event: [:tailwind_builder, :build, :step, :start], metadata: metadata} = event) do
+  defp format_event(
+         %{event: [:tailwind_builder, :build, :step, :start], metadata: metadata} = event
+       ) do
     %{
       type: :step_start,
       step: metadata.step,
@@ -108,34 +111,43 @@ defmodule Defdo.TailwindBuilder.BuildMonitor do
     }
   end
 
-  defp format_event(%{event: [:tailwind_builder, :build, :step, :stop], metadata: metadata} = event) do
+  defp format_event(
+         %{event: [:tailwind_builder, :build, :step, :stop], metadata: metadata} = event
+       ) do
     %{
       type: :step_complete,
       step: metadata.step,
       version: metadata.version,
       result: metadata.result,
       timestamp: event.timestamp,
-      message: case metadata.result do
-        :success -> "✓ Completed: #{metadata.step}"
-        :error -> "✗ Failed: #{metadata.step}"
-        _ -> "◦ Finished: #{metadata.step}"
-      end
+      message:
+        case metadata.result do
+          :success -> "✓ Completed: #{metadata.step}"
+          :error -> "✗ Failed: #{metadata.step}"
+          _ -> "◦ Finished: #{metadata.step}"
+        end
     }
   end
 
-  defp format_event(%{event: [:tailwind_builder, :build, :compilation_start], metadata: metadata} = event) do
+  defp format_event(
+         %{event: [:tailwind_builder, :build, :compilation_start], metadata: metadata} = event
+       ) do
     %{
       type: :compilation_start,
       version: metadata.version,
       compilation_method: metadata.compilation_method,
       debug: metadata.debug,
       timestamp: event.timestamp,
-      message: "🏗️  Starting compilation for Tailwind v#{metadata.version} (#{metadata.compilation_method})"
+      message:
+        "🏗️  Starting compilation for Tailwind v#{metadata.version} (#{metadata.compilation_method})"
     }
   end
 
-  defp format_event(%{event: [:tailwind_builder, :build, :compilation_success], metadata: metadata} = event) do
+  defp format_event(
+         %{event: [:tailwind_builder, :build, :compilation_success], metadata: metadata} = event
+       ) do
     duration_sec = metadata.duration_ms / 1000
+
     %{
       type: :compilation_success,
       version: metadata.version,
@@ -146,7 +158,9 @@ defmodule Defdo.TailwindBuilder.BuildMonitor do
     }
   end
 
-  defp format_event(%{event: [:tailwind_builder, :build, :compilation_error], metadata: metadata} = event) do
+  defp format_event(
+         %{event: [:tailwind_builder, :build, :compilation_error], metadata: metadata} = event
+       ) do
     %{
       type: :compilation_error,
       version: metadata.version,
@@ -166,25 +180,25 @@ defmodule Defdo.TailwindBuilder.BuildMonitor do
   end
 
   defp update_state(state, %{type: :step_start} = event) do
-    %{state |
-      current_step: event.step,
-      total_steps: state.total_steps || estimate_total_steps(event.version)
+    %{
+      state
+      | current_step: event.step,
+        total_steps: state.total_steps || estimate_total_steps(event.version)
     }
   end
 
   defp update_state(state, %{type: :step_complete}) do
-    %{state |
-      steps_completed: state.steps_completed + 1,
-      current_step: nil
-    }
+    %{state | steps_completed: state.steps_completed + 1, current_step: nil}
   end
 
   defp update_state(state, _event), do: state
 
   defp estimate_total_steps(version) when is_binary(version) do
     case String.starts_with?(version, "4.") do
-      true -> 4  # v4: pnpm install, oxide build, workspace build, bun build
-      false -> 4 # v3: npm install (root), npm build (root), npm install (standalone), npm build (standalone)
+      # v4: pnpm install, oxide build, workspace build, bun build
+      true -> 4
+      # v3: npm install (root), npm build (root), npm install (standalone), npm build (standalone)
+      false -> 4
     end
   end
 
@@ -206,12 +220,15 @@ defmodule Defdo.TailwindBuilder.BuildMonitor do
       progress_percentage: calculate_percentage(state.steps_completed, state.total_steps),
       elapsed_time_ms: System.monotonic_time() - state.start_time
     }
+
     {:reply, progress, state}
   end
 
   defp calculate_percentage(_completed, nil), do: 0
+
   defp calculate_percentage(completed, total) when total > 0 do
     round(completed / total * 100)
   end
+
   defp calculate_percentage(_, _), do: 0
 end

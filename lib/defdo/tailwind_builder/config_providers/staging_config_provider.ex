@@ -1,7 +1,7 @@
 defmodule Defdo.TailwindBuilder.ConfigProviders.StagingConfigProvider do
   @moduledoc """
   ConfigProvider optimized for staging/pre-production environments.
-  
+
   Features:
   - Production-like settings with some flexibility for testing
   - Moderate security policies
@@ -9,7 +9,7 @@ defmodule Defdo.TailwindBuilder.ConfigProviders.StagingConfigProvider do
   - Safe environment for testing production features
   - Rollback and recovery features
   """
-  
+
   @behaviour Defdo.TailwindBuilder.ConfigProvider
 
   # Staging supports more plugins than production but less than development
@@ -24,7 +24,7 @@ defmodule Defdo.TailwindBuilder.ConfigProviders.StagingConfigProvider do
     "daisyui_v5" => %{
       "version" => ~s["daisyui": "^5.0.49"],
       "description" => "Semantic component classes for Tailwind CSS v5",
-      "npm_name" => "daisyui", 
+      "npm_name" => "daisyui",
       "compatible_versions" => ["4.x"]
     },
     "@tailwindcss/typography" => %{
@@ -59,7 +59,7 @@ defmodule Defdo.TailwindBuilder.ConfigProviders.StagingConfigProvider do
     Application.get_env(:tailwind_builder, :staging_plugins, @staging_supported_plugins)
   end
 
-  @impl true  
+  @impl true
   def get_known_checksums do
     Application.get_env(:tailwind_builder, :staging_checksums, @staging_checksums)
   end
@@ -70,15 +70,15 @@ defmodule Defdo.TailwindBuilder.ConfigProviders.StagingConfigProvider do
       # Allow release candidates in staging
       String.contains?(version, "-rc.") ->
         :allowed
-      
+
       # Allow all stable versions with known checksums
       Map.has_key?(@staging_checksums, version) ->
         :allowed
-      
+
       # Deprecate very old versions
       version in ["3.0.0", "3.1.0", "3.2.0"] ->
         :deprecated
-      
+
       # Block unknown versions (more restrictive than development)
       true ->
         :blocked
@@ -89,12 +89,18 @@ defmodule Defdo.TailwindBuilder.ConfigProviders.StagingConfigProvider do
   def get_operation_limits do
     %{
       # Production-like timeouts but slightly more generous
-      download_timeout: 90_000,       # 1.5 minutes
-      build_timeout: 300_000,         # 5 minutes
-      max_file_size: 150_000_000,     # 150MB (between dev and prod)
-      max_concurrent_downloads: 3,    # Moderate concurrency
-      retry_attempts: 3,              # Balanced retry strategy
-      cache_ttl: 1800                 # 30 minutes cache
+      # 1.5 minutes
+      download_timeout: 90_000,
+      # 5 minutes
+      build_timeout: 300_000,
+      # 150MB (between dev and prod)
+      max_file_size: 150_000_000,
+      # Moderate concurrency
+      max_concurrent_downloads: 3,
+      # Balanced retry strategy
+      retry_attempts: 3,
+      # 30 minutes cache
+      cache_ttl: 1800
     }
   end
 
@@ -110,18 +116,20 @@ defmodule Defdo.TailwindBuilder.ConfigProviders.StagingConfigProvider do
           backup_before_deploy: true,
           rollback_capability: true
         }
-      
+
       :r2 ->
         %{
           bucket: "tailwind-staging",
           prefix: "staging/",
-          public_access: true,         # Allow public access for testing
-          cache_control: "public, max-age=3600",  # 1 hour cache
+          # Allow public access for testing
+          public_access: true,
+          # 1 hour cache
+          cache_control: "public, max-age=3600",
           encryption: "AES256",
           versioning: true,
           backup_retention_days: 30
         }
-      
+
       :s3 ->
         %{
           bucket: "tailwind-staging-releases",
@@ -129,19 +137,21 @@ defmodule Defdo.TailwindBuilder.ConfigProviders.StagingConfigProvider do
           storage_class: "STANDARD",
           public_access: true,
           encryption: "aws:kms",
-          lifecycle_policy: false,     # No lifecycle in staging
+          # No lifecycle in staging
+          lifecycle_policy: false,
           cloudfront_distribution: false
         }
-      
+
       :preview ->
         %{
           provider: "vercel",
           auto_deploy: true,
           preview_urls: true,
           share_with_team: true,
-          ephemeral: true             # Auto-cleanup preview deployments
+          # Auto-cleanup preview deployments
+          ephemeral: true
         }
-      
+
       _ ->
         %{
           destination: "/tmp/tailwind_staging_unknown",
@@ -158,13 +168,19 @@ defmodule Defdo.TailwindBuilder.ConfigProviders.StagingConfigProvider do
       # Staging build policies (production-like with some flexibility)
       allow_experimental_features: false,
       skip_non_critical_validations: false,
-      enable_debug_symbols: true,      # Enable for debugging
-      verbose_logging: true,           # More verbose for issue diagnosis
-      parallel_builds: true,           # Enable for performance
-      incremental_builds: false,       # Full builds for consistency
+      # Enable for debugging
+      enable_debug_symbols: true,
+      # More verbose for issue diagnosis
+      verbose_logging: true,
+      # Enable for performance
+      parallel_builds: true,
+      # Full builds for consistency
+      incremental_builds: false,
       checksum_validation: true,
-      code_signing: false,             # Not required in staging
-      virus_scanning: false            # Skip for speed
+      # Not required in staging
+      code_signing: false,
+      # Skip for speed
+      virus_scanning: false
     }
   end
 
@@ -173,14 +189,22 @@ defmodule Defdo.TailwindBuilder.ConfigProviders.StagingConfigProvider do
     %{
       # Staging deployment policies
       skip_production_checks: false,
-      allow_overwrite: true,          # Allow overwriting for testing
-      backup_existing: true,          # Always backup
-      notify_on_deploy: true,         # Alert on deployments
-      auto_cleanup_old: true,         # Cleanup old versions
-      max_versions_kept: 10,          # Keep moderate number of versions
-      require_approval: false,        # No approval required
-      canary_deployment: false,       # Direct deployment in staging
-      rollback_strategy: "manual"     # Manual rollback
+      # Allow overwriting for testing
+      allow_overwrite: true,
+      # Always backup
+      backup_existing: true,
+      # Alert on deployments
+      notify_on_deploy: true,
+      # Cleanup old versions
+      auto_cleanup_old: true,
+      # Keep moderate number of versions
+      max_versions_kept: 10,
+      # No approval required
+      require_approval: false,
+      # Direct deployment in staging
+      canary_deployment: false,
+      # Manual rollback
+      rollback_strategy: "manual"
     }
   end
 
@@ -189,20 +213,26 @@ defmodule Defdo.TailwindBuilder.ConfigProviders.StagingConfigProvider do
 
   def validate_operation_policy(:download, %{version: version}) do
     case get_version_policy(version) do
-      :allowed -> :ok
-      :deprecated -> 
+      :allowed ->
+        :ok
+
+      :deprecated ->
         {:warning, "Version #{version} is deprecated, consider upgrading"}
-      :blocked -> 
+
+      :blocked ->
         {:error, {:version_blocked, "Version #{version} is not allowed in staging"}}
     end
   end
 
   def validate_operation_policy(:build, %{version: version}) do
     case get_version_policy(version) do
-      :allowed -> :ok
-      :deprecated -> 
+      :allowed ->
+        :ok
+
+      :deprecated ->
         {:warning, "Building deprecated version #{version} in staging"}
-      :blocked -> 
+
+      :blocked ->
         {:error, {:build_blocked, "Cannot build blocked version #{version} in staging"}}
     end
   end
@@ -212,7 +242,8 @@ defmodule Defdo.TailwindBuilder.ConfigProviders.StagingConfigProvider do
   end
 
   def validate_operation_policy(:deploy, %{target: target}) when target in [:staging, :preview] do
-    :ok  # Always allow staging deployments
+    # Always allow staging deployments
+    :ok
   end
 
   def validate_operation_policy(:deploy, %{target: target}) when target in [:r2, :s3] do
@@ -245,11 +276,11 @@ defmodule Defdo.TailwindBuilder.ConfigProviders.StagingConfigProvider do
   """
   def in_allowed_deployment_hours? do
     now = DateTime.utc_now()
-    
+
     # Allow deployments Monday-Friday, 8 AM - 8 PM UTC (longer window than production)
     weekday = Date.day_of_week(DateTime.to_date(now))
     hour = now.hour
-    
+
     weekday in [1, 2, 3, 4, 5] and hour >= 8 and hour < 20
   end
 
@@ -259,14 +290,19 @@ defmodule Defdo.TailwindBuilder.ConfigProviders.StagingConfigProvider do
   def get_logging_config do
     %{
       level: :info,
-      enable_module_logging: true,     # Enable for debugging
-      log_http_requests: true,         # Log for troubleshooting
+      # Enable for debugging
+      enable_module_logging: true,
+      # Log for troubleshooting
+      log_http_requests: true,
       log_file_operations: true,
       log_compilation_steps: true,
-      pretty_print: true,              # Human-readable logs
-      structured_logging: false,       # Keep simple for staging
+      # Human-readable logs
+      pretty_print: true,
+      # Keep simple for staging
+      structured_logging: false,
       log_aggregation: false,
-      retention_days: 7               # Shorter retention than production
+      # Shorter retention than production
+      retention_days: 7
     }
   end
 
@@ -277,12 +313,15 @@ defmodule Defdo.TailwindBuilder.ConfigProviders.StagingConfigProvider do
     %{
       enable_metrics: true,
       metrics_endpoint: "/metrics",
-      health_check_endpoint: "/health",  
+      health_check_endpoint: "/health",
       alert_on_errors: true,
-      alert_on_slow_operations: false,  # Less strict than production
+      # Less strict than production
+      alert_on_slow_operations: false,
       performance_monitoring: true,
-      error_tracking: "development",    # Use dev error tracking
-      apm_service: nil                  # No APM in staging
+      # Use dev error tracking
+      error_tracking: "development",
+      # No APM in staging
+      apm_service: nil
     }
   end
 
@@ -292,12 +331,18 @@ defmodule Defdo.TailwindBuilder.ConfigProviders.StagingConfigProvider do
   def get_testing_config do
     %{
       run_integration_tests: true,
-      run_performance_tests: true,     # Test performance in staging
-      run_security_tests: false,      # Skip security tests for speed
-      test_with_real_data: true,      # Use production-like data
-      load_testing: true,             # Run load tests
-      chaos_testing: false,           # Skip chaos testing
-      user_acceptance_testing: true   # Enable UAT in staging
+      # Test performance in staging
+      run_performance_tests: true,
+      # Skip security tests for speed
+      run_security_tests: false,
+      # Use production-like data
+      test_with_real_data: true,
+      # Run load tests
+      load_testing: true,
+      # Skip chaos testing
+      chaos_testing: false,
+      # Enable UAT in staging
+      user_acceptance_testing: true
     }
   end
 
@@ -310,9 +355,12 @@ defmodule Defdo.TailwindBuilder.ConfigProviders.StagingConfigProvider do
       cache_directory: "/var/cache/tailwind_staging",
       cache_downloads: true,
       cache_builds: true,
-      auto_invalidate: false,          # Manual invalidation
-      max_cache_size_mb: 2000,         # 2GB cache
-      cache_encryption: false,         # No encryption needed
+      # Manual invalidation
+      auto_invalidate: false,
+      # 2GB cache
+      max_cache_size_mb: 2000,
+      # No encryption needed
+      cache_encryption: false,
       cache_compression: true
     }
   end
@@ -323,10 +371,14 @@ defmodule Defdo.TailwindBuilder.ConfigProviders.StagingConfigProvider do
   def get_feature_flags do
     %{
       # Feature flags for testing new features in staging
-      enable_new_plugin_system: Application.get_env(:tailwind_builder, :enable_new_plugin_system, false),
-      enable_experimental_compression: Application.get_env(:tailwind_builder, :enable_experimental_compression, false),
-      enable_advanced_caching: Application.get_env(:tailwind_builder, :enable_advanced_caching, true),
-      enable_parallel_processing: Application.get_env(:tailwind_builder, :enable_parallel_processing, true)
+      enable_new_plugin_system:
+        Application.get_env(:tailwind_builder, :enable_new_plugin_system, false),
+      enable_experimental_compression:
+        Application.get_env(:tailwind_builder, :enable_experimental_compression, false),
+      enable_advanced_caching:
+        Application.get_env(:tailwind_builder, :enable_advanced_caching, true),
+      enable_parallel_processing:
+        Application.get_env(:tailwind_builder, :enable_parallel_processing, true)
     }
   end
 
@@ -342,11 +394,16 @@ defmodule Defdo.TailwindBuilder.ConfigProviders.StagingConfigProvider do
   """
   def get_database_config do
     %{
-      use_production_data_copy: true,  # Use copy of production data
-      anonymize_sensitive_data: true,  # Anonymize for privacy
-      auto_refresh_data: true,         # Refresh data periodically
-      backup_before_tests: true,       # Backup before destructive tests
-      cleanup_test_data: true          # Clean up after tests
+      # Use copy of production data
+      use_production_data_copy: true,
+      # Anonymize for privacy
+      anonymize_sensitive_data: true,
+      # Refresh data periodically
+      auto_refresh_data: true,
+      # Backup before destructive tests
+      backup_before_tests: true,
+      # Clean up after tests
+      cleanup_test_data: true
     }
   end
 
@@ -359,7 +416,8 @@ defmodule Defdo.TailwindBuilder.ConfigProviders.StagingConfigProvider do
       notify_on_errors: true,
       notify_on_performance_issues: false,
       notification_channels: [:slack, :email],
-      notification_threshold: :warning,  # Lower threshold than production
+      # Lower threshold than production
+      notification_threshold: :warning,
       rate_limit_notifications: true
     }
   end
@@ -372,13 +430,16 @@ defmodule Defdo.TailwindBuilder.ConfigProviders.StagingConfigProvider do
       enabled: true,
       level: :info,
       backends: [:console, :prometheus],
-      sample_rate: 0.5,  # Sample 50% in staging
-      trace_retention_hours: 24,  # 1 day retention
+      # Sample 50% in staging
+      sample_rate: 0.5,
+      # 1 day retention
+      trace_retention_hours: 24,
       detailed_logging: true,
       performance_monitoring: true,
       error_tracking: :development,
       alert_on_errors: true,
-      alert_on_high_latency: false,  # Less strict than production
+      # Less strict than production
+      alert_on_high_latency: false,
       metrics_collection: %{
         system_metrics: true,
         business_metrics: true,

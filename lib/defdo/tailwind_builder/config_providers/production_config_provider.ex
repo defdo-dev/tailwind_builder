@@ -1,7 +1,7 @@
 defmodule Defdo.TailwindBuilder.ConfigProviders.ProductionConfigProvider do
   @moduledoc """
   ConfigProvider optimized for production environments.
-  
+
   Features:
   - Strict version policies (only stable, tested versions)
   - Conservative timeout settings for reliability
@@ -9,7 +9,7 @@ defmodule Defdo.TailwindBuilder.ConfigProviders.ProductionConfigProvider do
   - Enhanced security and validation
   - Production-grade error handling
   """
-  
+
   @behaviour Defdo.TailwindBuilder.ConfigProvider
 
   # Only stable, well-tested plugins for production
@@ -39,7 +39,8 @@ defmodule Defdo.TailwindBuilder.ConfigProviders.ProductionConfigProvider do
 
   # Blocked versions for production (security or stability issues)
   @blocked_versions [
-    "4.0.9"    # Known issues with this version
+    # Known issues with this version
+    "4.0.9"
   ]
 
   @impl true
@@ -48,7 +49,7 @@ defmodule Defdo.TailwindBuilder.ConfigProviders.ProductionConfigProvider do
     @production_supported_plugins
   end
 
-  @impl true  
+  @impl true
   def get_known_checksums do
     @production_checksums
   end
@@ -57,21 +58,22 @@ defmodule Defdo.TailwindBuilder.ConfigProviders.ProductionConfigProvider do
   def get_version_policy(version) do
     cond do
       # Block beta/alpha versions first (before other checks)
-      String.contains?(version, "beta") or String.contains?(version, "alpha") or String.contains?(version, "rc") ->
+      String.contains?(version, "beta") or String.contains?(version, "alpha") or
+          String.contains?(version, "rc") ->
         :blocked
-      
+
       # Block known problematic versions
       version in @blocked_versions ->
         :blocked
-      
+
       # Only allow versions with verified checksums
       Map.has_key?(@production_checksums, version) ->
         :allowed
-      
+
       # Deprecate older stable versions
       String.starts_with?(version, "3.") ->
         :deprecated
-      
+
       # Block everything else
       true ->
         :blocked
@@ -82,12 +84,18 @@ defmodule Defdo.TailwindBuilder.ConfigProviders.ProductionConfigProvider do
   def get_operation_limits do
     %{
       # Conservative timeouts for production reliability
-      download_timeout: 120_000,      # 2 minutes
-      build_timeout: 600_000,         # 10 minutes (allow for complex builds)
-      max_file_size: 100_000_000,     # 100MB (strict limit)
-      max_concurrent_downloads: 2,    # Conservative concurrency
-      retry_attempts: 5,              # More retries for reliability
-      cache_ttl: 3600                 # 1 hour cache (stable)
+      # 2 minutes
+      download_timeout: 120_000,
+      # 10 minutes (allow for complex builds)
+      build_timeout: 600_000,
+      # 100MB (strict limit)
+      max_file_size: 100_000_000,
+      # Conservative concurrency
+      max_concurrent_downloads: 2,
+      # More retries for reliability
+      retry_attempts: 5,
+      # 1 hour cache (stable)
+      cache_ttl: 3600
     }
   end
 
@@ -98,34 +106,39 @@ defmodule Defdo.TailwindBuilder.ConfigProviders.ProductionConfigProvider do
         %{
           bucket: "tailwind-production",
           prefix: "releases/",
-          public_access: false,        # Private by default
-          cache_control: "public, max-age=31536000",  # 1 year cache
+          # Private by default
+          public_access: false,
+          # 1 year cache
+          cache_control: "public, max-age=31536000",
           encryption: "AES256",
           versioning: true,
           backup_retention_days: 90
         }
-      
+
       :s3 ->
         %{
           bucket: "tailwind-prod-releases",
           prefix: "v1/",
-          storage_class: "STANDARD_IA",  # Cost-optimized
+          # Cost-optimized
+          storage_class: "STANDARD_IA",
           public_access: false,
           encryption: "aws:kms",
           lifecycle_policy: true,
           cloudfront_distribution: true
         }
-      
+
       :cdn ->
         %{
           provider: "cloudflare",
           zone: "tailwind-releases",
           cache_everything: true,
-          edge_cache_ttl: 86400,       # 24 hours
-          browser_cache_ttl: 3600,     # 1 hour
+          # 24 hours
+          edge_cache_ttl: 86400,
+          # 1 hour
+          browser_cache_ttl: 3600,
           purge_on_deploy: true
         }
-      
+
       _ ->
         %{
           destination: "/tmp/tailwind_unknown",
@@ -144,8 +157,10 @@ defmodule Defdo.TailwindBuilder.ConfigProviders.ProductionConfigProvider do
       skip_non_critical_validations: false,
       enable_debug_symbols: false,
       verbose_logging: false,
-      parallel_builds: false,          # Sequential for deterministic builds
-      incremental_builds: false,       # Full builds for consistency
+      # Sequential for deterministic builds
+      parallel_builds: false,
+      # Full builds for consistency
+      incremental_builds: false,
       checksum_validation: true,
       code_signing: true,
       virus_scanning: true
@@ -157,14 +172,22 @@ defmodule Defdo.TailwindBuilder.ConfigProviders.ProductionConfigProvider do
     %{
       # Production deployment policies
       skip_production_checks: false,
-      allow_overwrite: false,         # Never overwrite in production
-      backup_existing: true,          # Always backup
-      notify_on_deploy: true,         # Alert on deployments
-      auto_cleanup_old: false,        # Manual cleanup only
-      max_versions_kept: 50,          # Keep many versions
-      require_approval: true,         # Require deployment approval
-      canary_deployment: true,        # Gradual rollout
-      rollback_strategy: "immediate"  # Fast rollback capability
+      # Never overwrite in production
+      allow_overwrite: false,
+      # Always backup
+      backup_existing: true,
+      # Alert on deployments
+      notify_on_deploy: true,
+      # Manual cleanup only
+      auto_cleanup_old: false,
+      # Keep many versions
+      max_versions_kept: 50,
+      # Require deployment approval
+      require_approval: true,
+      # Gradual rollout
+      canary_deployment: true,
+      # Fast rollback capability
+      rollback_strategy: "immediate"
     }
   end
 
@@ -173,10 +196,13 @@ defmodule Defdo.TailwindBuilder.ConfigProviders.ProductionConfigProvider do
 
   def validate_operation_policy(:download, %{version: version}) do
     case get_version_policy(version) do
-      :allowed -> :ok
-      :deprecated -> 
+      :allowed ->
+        :ok
+
+      :deprecated ->
         {:warning, "Version #{version} is deprecated, consider upgrading"}
-      :blocked -> 
+
+      :blocked ->
         {:error, {:version_blocked, "Version #{version} is not allowed in production"}}
     end
   end
@@ -184,10 +210,13 @@ defmodule Defdo.TailwindBuilder.ConfigProviders.ProductionConfigProvider do
   def validate_operation_policy(:build, %{version: version}) do
     # Only allow builds for approved versions
     case get_version_policy(version) do
-      :allowed -> :ok
-      :deprecated -> 
+      :allowed ->
+        :ok
+
+      :deprecated ->
         {:warning, "Building deprecated version #{version}"}
-      :blocked -> 
+
+      :blocked ->
         {:error, {:build_blocked, "Cannot build blocked version #{version}"}}
     end
   end
@@ -210,7 +239,8 @@ defmodule Defdo.TailwindBuilder.ConfigProviders.ProductionConfigProvider do
     if String.starts_with?(version, "3.") do
       :ok
     else
-      {:error, {:cross_compile_blocked, "Cross-compilation not supported for #{version} in production"}}
+      {:error,
+       {:cross_compile_blocked, "Cross-compilation not supported for #{version} in production"}}
     end
   end
 
@@ -226,11 +256,11 @@ defmodule Defdo.TailwindBuilder.ConfigProviders.ProductionConfigProvider do
   """
   def in_deployment_window? do
     now = DateTime.utc_now()
-    
+
     # Allow deployments Monday-Thursday, 9 AM - 5 PM UTC
     weekday = Date.day_of_week(DateTime.to_date(now))
     hour = now.hour
-    
+
     weekday in [1, 2, 3, 4] and hour >= 9 and hour < 17
   end
 
@@ -241,11 +271,13 @@ defmodule Defdo.TailwindBuilder.ConfigProviders.ProductionConfigProvider do
     %{
       level: :info,
       enable_module_logging: false,
-      log_http_requests: false,      # Don't log requests in production
+      # Don't log requests in production
+      log_http_requests: false,
       log_file_operations: false,
       log_compilation_steps: false,
       pretty_print: false,
-      structured_logging: true,      # JSON logs for production
+      # JSON logs for production
+      structured_logging: true,
       log_aggregation: true,
       retention_days: 30
     }
@@ -282,7 +314,8 @@ defmodule Defdo.TailwindBuilder.ConfigProviders.ProductionConfigProvider do
         burst_limit: 10
       },
       ip_whitelisting: %{
-        enabled: false,  # Configure as needed
+        # Configure as needed
+        enabled: false,
         allowed_ips: []
       }
     }
@@ -296,9 +329,12 @@ defmodule Defdo.TailwindBuilder.ConfigProviders.ProductionConfigProvider do
       enable_disk_cache: true,
       cache_directory: "/var/cache/tailwind_builder",
       cache_downloads: true,
-      cache_builds: true,           # Cache builds in production
-      auto_invalidate: false,       # Manual cache invalidation
-      max_cache_size_mb: 5000,      # 5GB cache for production
+      # Cache builds in production
+      cache_builds: true,
+      # Manual cache invalidation
+      auto_invalidate: false,
+      # 5GB cache for production
+      max_cache_size_mb: 5000,
       cache_encryption: true,
       cache_compression: true
     }
@@ -317,7 +353,8 @@ defmodule Defdo.TailwindBuilder.ConfigProviders.ProductionConfigProvider do
   def get_backup_config do
     %{
       enable_automatic_backups: true,
-      backup_schedule: "0 2 * * *",  # Daily at 2 AM
+      # Daily at 2 AM
+      backup_schedule: "0 2 * * *",
       backup_retention_days: 90,
       backup_storage: :s3,
       backup_encryption: true,
@@ -334,8 +371,10 @@ defmodule Defdo.TailwindBuilder.ConfigProviders.ProductionConfigProvider do
       enabled: true,
       level: :info,
       backends: [:console, :prometheus, :datadog],
-      sample_rate: 0.1,  # Sample 10% in production for performance
-      trace_retention_hours: 72,  # 3 days retention
+      # Sample 10% in production for performance
+      sample_rate: 0.1,
+      # 3 days retention
+      trace_retention_hours: 72,
       detailed_logging: false,
       performance_monitoring: true,
       error_tracking: :sentry,

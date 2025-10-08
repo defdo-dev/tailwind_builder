@@ -1,11 +1,11 @@
 defmodule Defdo.TailwindBuilder.DefaultConfigProvider do
   @moduledoc """
   Implementación por defecto del ConfigProvider.
-  
+
   Proporciona configuración básica que puede ser sobrescrita
   por implementaciones específicas del usuario.
   """
-  
+
   @behaviour Defdo.TailwindBuilder.ConfigProvider
 
   # Configuración de plugins soportados por defecto
@@ -20,7 +20,7 @@ defmodule Defdo.TailwindBuilder.DefaultConfigProvider do
     "daisyui_v5" => %{
       "version" => ~s["daisyui": "^5.0.49"],
       "description" => "Semantic component classes for Tailwind CSS v5",
-      "npm_name" => "daisyui", 
+      "npm_name" => "daisyui",
       "compatible_versions" => ["4.x"]
     }
   }
@@ -39,7 +39,7 @@ defmodule Defdo.TailwindBuilder.DefaultConfigProvider do
     Application.get_env(:tailwind_builder, :supported_plugins, @default_supported_plugins)
   end
 
-  @impl true  
+  @impl true
   def get_known_checksums do
     # Permitir sobrescribir desde configuración de aplicación
     Application.get_env(:tailwind_builder, :known_checksums, @default_checksums)
@@ -49,11 +49,12 @@ defmodule Defdo.TailwindBuilder.DefaultConfigProvider do
   def get_version_policy(version) do
     # Política por defecto: permitir todas las versiones con checksums conocidos
     checksums = get_known_checksums()
-    
+
     cond do
       Map.has_key?(checksums, version) -> :allowed
-      version_is_too_old?(version) -> :deprecated  
-      true -> :allowed  # Permitir versiones nuevas para experimentación
+      version_is_too_old?(version) -> :deprecated
+      # Permitir versiones nuevas para experimentación
+      true -> :allowed
     end
   end
 
@@ -65,7 +66,7 @@ defmodule Defdo.TailwindBuilder.DefaultConfigProvider do
       region: Application.get_env(:tailwind_builder, :r2_region, "auto")
     }
   end
-  
+
   def get_deployment_config(:s3) do
     %{
       bucket: Application.get_env(:tailwind_builder, :s3_bucket, "my-tailwind-builds"),
@@ -73,7 +74,7 @@ defmodule Defdo.TailwindBuilder.DefaultConfigProvider do
       region: Application.get_env(:tailwind_builder, :s3_region, "us-east-1")
     }
   end
-  
+
   def get_deployment_config(_target) do
     %{bucket: "", prefix: "", region: ""}
   end
@@ -81,22 +82,28 @@ defmodule Defdo.TailwindBuilder.DefaultConfigProvider do
   @impl true
   def get_operation_limits do
     %{
-      max_concurrent_downloads: Application.get_env(:tailwind_builder, :max_concurrent_downloads, 3),
-      download_timeout: Application.get_env(:tailwind_builder, :download_timeout, 300_000),  # 5 minutos
-      build_timeout: Application.get_env(:tailwind_builder, :build_timeout, 900_000),       # 15 minutos
-      max_file_size: Application.get_env(:tailwind_builder, :max_file_size, 200_000_000)   # 200MB
+      max_concurrent_downloads:
+        Application.get_env(:tailwind_builder, :max_concurrent_downloads, 3),
+      # 5 minutos
+      download_timeout: Application.get_env(:tailwind_builder, :download_timeout, 300_000),
+      # 15 minutos
+      build_timeout: Application.get_env(:tailwind_builder, :build_timeout, 900_000),
+      # 200MB
+      max_file_size: Application.get_env(:tailwind_builder, :max_file_size, 200_000_000)
     }
   end
 
   @impl true
   def validate_operation_policy(:download, %{version: version}) do
     case get_version_policy(version) do
-      :allowed -> :ok
-      :deprecated -> 
+      :allowed ->
+        :ok
+
+      :deprecated ->
         {:warning, "Version #{version} is deprecated but allowed"}
     end
   end
-  
+
   def validate_operation_policy(:cross_compile, %{version: version}) do
     # Política de negocio: solo permitir cross-compilation en v3
     if String.starts_with?(version, "3.") do
@@ -105,17 +112,17 @@ defmodule Defdo.TailwindBuilder.DefaultConfigProvider do
       {:error, {:cross_compile_not_supported, "Cross-compilation only supported in Tailwind v3"}}
     end
   end
-  
+
   def validate_operation_policy(:plugin_install, %{plugin: plugin_name}) do
     supported_plugins = get_supported_plugins()
-    
+
     if Map.has_key?(supported_plugins, plugin_name) do
       :ok
     else
       {:error, {:plugin_not_supported, "Plugin #{plugin_name} is not in supported list"}}
     end
   end
-  
+
   def validate_operation_policy(_operation, _params) do
     # Por defecto, permitir operaciones no especificadas
     :ok

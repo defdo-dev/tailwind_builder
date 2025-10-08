@@ -8,14 +8,17 @@ defmodule Defdo.TailwindBuilder.CoreTest do
     test "recognizes supported versions" do
       assert Core.in_production_support?("3.4.17") == true
       assert Core.in_production_support?("4.1.11") == true
-      assert Core.in_production_support?("5.0.0") == false  # Future version
+      # Future version
+      assert Core.in_production_support?("5.0.0") == false
       assert Core.in_production_support?("invalid") == false
     end
 
     test "returns correct compilation method by version" do
       assert Core.get_compilation_method("3.4.17") == :npm
-      assert Core.get_compilation_method("4.1.11") == :pnpm_workspace  # Updated: v4 uses pnpm workspace + Rust
-      assert Core.get_compilation_method("5.0.0") == :cargo   # Future versions use pure Cargo
+      # Updated: v4 uses pnpm workspace + Rust
+      assert Core.get_compilation_method("4.1.11") == :pnpm_workspace
+      # Future versions use pure Cargo
+      assert Core.get_compilation_method("5.0.0") == :cargo
     end
 
     test "returns required tools by version" do
@@ -24,10 +27,14 @@ defmodule Defdo.TailwindBuilder.CoreTest do
       assert "node" in v3_tools
 
       v4_tools = Core.get_required_tools("4.1.11")
-      assert "pnpm" in v4_tools   # Updated: v4 requires pnpm
-      assert "node" in v4_tools   # Updated: v4 requires Node.js
-      assert "cargo" in v4_tools  # Updated: v4 requires Cargo
-      assert "rustc" in v4_tools  # Updated: v4 requires Rust
+      # Updated: v4 requires pnpm
+      assert "pnpm" in v4_tools
+      # Updated: v4 requires Node.js
+      assert "node" in v4_tools
+      # Updated: v4 requires Cargo
+      assert "cargo" in v4_tools
+      # Updated: v4 requires Rust
+      assert "rustc" in v4_tools
     end
   end
 
@@ -56,7 +63,8 @@ defmodule Defdo.TailwindBuilder.CoreTest do
     test "v4 supports multiple architectures via Rust targets" do
       architectures = Core.get_supported_architectures("4.1.11")
       assert is_list(architectures)
-      assert length(architectures) > 10  # Updated: v4 supports many Rust targets
+      # Updated: v4 supports many Rust targets
+      assert length(architectures) > 10
 
       # Check some expected Rust targets
       assert :"x86_64-unknown-linux-gnu" in architectures
@@ -75,7 +83,8 @@ defmodule Defdo.TailwindBuilder.CoreTest do
     test "validates supported version compilation" do
       request = %{
         version: "3.4.17",
-        target_arch: "linux-x64",  # v3 uses this format
+        # v3 uses this format
+        target_arch: "linux-x64",
         plugins: []
       }
 

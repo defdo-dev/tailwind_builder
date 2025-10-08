@@ -18,7 +18,7 @@ config :req,
 # These will be validated at runtime
 required_env_vars = [
   "AWS_ACCESS_KEY_ID",
-  "AWS_SECRET_ACCESS_KEY", 
+  "AWS_SECRET_ACCESS_KEY",
   "R2_HOST"
 ]
 

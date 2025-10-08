@@ -101,6 +101,7 @@ IO.puts("R2 configuration complete")
 IO.puts("Deploying to R2...")
 deploy_result = Defdo.TailwindBuilder.deploy_r2(tailwind_version, tmp_dir)
 IO.puts("Deployment complete!")
+IO.inspect(Application.get_env(:tailwind_builder, :aws))
 
 # Print deployment summary
 IO.puts("\n=== Deployment Summary ===")
@@ -110,4 +111,4 @@ IO.puts("Files deployed: #{length(deploy_result)}")
 IO.puts("========================")
 ```
 
-<!-- livebook:{"offset":3511,"stamp":{"token":"XCP.LsZL8g38anIBgAfYSuyvWOycICnk1DPDHFn27z3nWLPQRPlrgmALPRSGqulqX-ei97BhyvQJXyyeFzsgKaB7sRrBmg0u2qFf-lJ21p-SV4fTjHFkn_dZE8TPk5yGCDD5gjl0DB-AakIg7_-45wuamTlgG7HPF5dIdjb65M2gln4YI2ByFXMiad0zB7AMx7QgIQA","version":2}} -->
+<!-- livebook:{"offset":3568,"stamp":{"token":"XCP.uT-4HxqZuuruk2j2SPd5AYkomp0F9Q0GtJVhU_VLAfDuNiuDEalik-en3s3ObSBJtE1qhFA8JL0xr3wOw7uVb4cBmPTg9gkg9Pcoy_fd808eu3PPFBVhkf1lBca8IMQcabzdeWCHTjIsGjdboEIDqHSPjkFBMlbvmlAsbv9Rmc9ilCu4Wt8iQRdb-8JHYHU0ytc","version":2}} -->
