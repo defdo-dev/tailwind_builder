@@ -343,16 +343,45 @@ defmodule Defdo.TailwindBuilder.Deployer do
   end
 
   defp extract_architecture_from_filename(filename) do
+    normalized = String.downcase(filename)
+
     cond do
-      filename =~ "linux" && filename =~ "x64" -> "linux-x64"
-      filename =~ "linux" && filename =~ "arm64" -> "linux-arm64"
-      filename =~ "darwin" && filename =~ "x64" -> "darwin-x64"
-      filename =~ "darwin" && filename =~ "arm64" -> "darwin-arm64"
-      filename =~ "win32" && filename =~ "x64" -> "win32-x64"
-      filename =~ "win32" && filename =~ "arm64" -> "win32-arm64"
-      filename =~ "freebsd" -> "freebsd-x64"
-      true -> "unknown"
+      matches_any?(normalized, ["darwin", "macos", "apple"]) &&
+          matches_any?(normalized, ["arm64", "aarch64"]) ->
+        "darwin-arm64"
+
+      matches_any?(normalized, ["darwin", "macos", "apple"]) &&
+          matches_any?(normalized, ["x86_64", "x64"]) ->
+        "darwin-x64"
+
+      String.contains?(normalized, "linux") &&
+          matches_any?(normalized, ["arm64", "aarch64"]) ->
+        "linux-arm64"
+
+      String.contains?(normalized, "linux") && matches_any?(normalized, ["armv7", "arm"]) ->
+        "linux-arm"
+
+      String.contains?(normalized, "linux") && matches_any?(normalized, ["x86_64", "x64"]) ->
+        "linux-x64"
+
+      matches_any?(normalized, ["win32", "windows"]) &&
+          matches_any?(normalized, ["arm64", "aarch64"]) ->
+        "win32-arm64"
+
+      matches_any?(normalized, ["win32", "windows"]) &&
+          matches_any?(normalized, ["x86_64", "x64"]) ->
+        "win32-x64"
+
+      String.contains?(normalized, "freebsd") ->
+        "freebsd-x64"
+
+      true ->
+        "unknown"
     end
+  end
+
+  defp matches_any?(string, patterns) do
+    Enum.any?(patterns, &String.contains?(string, &1))
   end
 
   defp match_architecture?("unknown", _host), do: false
