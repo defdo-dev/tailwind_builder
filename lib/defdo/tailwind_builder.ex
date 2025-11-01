@@ -179,15 +179,26 @@ defmodule Defdo.TailwindBuilder do
   Compiles Tailwind source code.
 
   Migrated to use the new Builder module.
-  """
-  def build(tailwind_version \\ @tailwind_latest, tailwind_src \\ File.cwd!(), debug \\ false) do
-    Logger.info("Building Tailwind v#{tailwind_version} using new modular architecture")
 
-    case Builder.compile(
-           version: tailwind_version,
-           source_path: tailwind_src,
-           debug: debug
-         ) do
+  ## Parameters
+  - `tailwind_version` - TailwindCSS version to build
+  - `tailwind_src` - Source directory path
+  - `debug` - Enable debug output
+  - `target` - Optional Rust target triple (e.g., "x86_64-unknown-linux-musl")
+  """
+  def build(tailwind_version \\ @tailwind_latest, tailwind_src \\ File.cwd!(), debug \\ false, target \\ nil) do
+    target_info = if target, do: " for target #{target}", else: ""
+    Logger.info("Building Tailwind v#{tailwind_version}#{target_info} using new modular architecture")
+
+    build_opts = [
+      version: tailwind_version,
+      source_path: tailwind_src,
+      debug: debug
+    ]
+
+    build_opts = if target, do: Keyword.put(build_opts, :target, target), else: build_opts
+
+    case Builder.compile(build_opts) do
       {:ok, build_result} ->
         # Maintain the same result format as the original API
         result = %{

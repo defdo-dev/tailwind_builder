@@ -11,12 +11,51 @@ defmodule Defdo.TailwindBuilder.Dependencies do
   require Logger
 
   @required_tools ~w(npm pnpm node cargo rustup bun)
-  @required_rust_targets ~w(wasm32-wasip1-threads)
-  @tailwind_v4_requirements %{
-    "4.0.0" => ["wasm32-wasip1-threads"],
-    "4.1.0" => ["wasm32-wasip1-threads"],
-    "4.1.11" => ["wasm32-wasip1-threads"]
+  @ubuntu_required_tools ~w(unzip curl)
+
+  # Rust target required for TailwindCSS v4 Oxide compilation (always needed for v4.x)
+  @wasm_target "wasm32-wasip1-threads"
+
+  # Native targets by platform - we do NOT cross-compile, each node builds natively
+  @platform_specific_targets %{
+    # macOS (native targets are already installed by Rust, no musl needed)
+    {:darwin, :arm64} => [],
+    {:darwin, :x64} => [],
+
+    # Linux (compile both gnu and musl variants like official Tailwind)
+    # - gnu: uses glibc, dynamically linked, faster to compile
+    # - musl: uses musl libc, statically linked, more portable
+    {:linux, :x64} => ["x86_64-unknown-linux-gnu", "x86_64-unknown-linux-musl"],
+    {:linux, :arm64} => ["aarch64-unknown-linux-gnu", "aarch64-unknown-linux-musl"],
+
+    # Windows
+    {:win32, :x64} => ["x86_64-pc-windows-msvc"]
   }
+
+  # Get targets required for current platform
+  defp get_required_rust_targets do
+    platform_key = {host_os(), host_arch()}
+    platform_targets = Map.get(@platform_specific_targets, platform_key, [])
+    [@wasm_target | platform_targets]
+  end
+
+  defp host_os do
+    case :os.type() do
+      {:unix, :darwin} -> :darwin
+      {:unix, :linux} -> :linux
+      {:win32, _} -> :win32
+      _ -> :unknown
+    end
+  end
+
+  defp host_arch do
+    arch = :erlang.system_info(:system_architecture) |> to_string()
+    cond do
+      String.contains?(arch, "aarch64") or String.contains?(arch, "arm64") -> :arm64
+      String.contains?(arch, "x86_64") or String.contains?(arch, "amd64") -> :x64
+      true -> :unknown
+    end
+  end
 
   defp asdf_version do
     if is_installed?("asdf") do
@@ -78,15 +117,21 @@ defmodule Defdo.TailwindBuilder.Dependencies do
         Missing required build tools: #{Enum.join(missing, ", ")}
 
         You can install them manually:
+        - System dependencies (Ubuntu/Debian):
+          sudo apt-get update && sudo apt-get install -y unzip curl
         - Rust (for cargo):
-          asdf: asdf install rust latest && asdf set rust latest && asdf set --home rust latest
+          asdf: asdf install rust latest && asdf global rust latest
+          mise: mise install rust@latest && mise use -g rust@latest
           manual: curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
         - Node.js (for npm):
           Ubuntu: curl -fsSL https://deb.nodesource.com/setup_lts.x | sudo -E bash - && sudo apt-get install -y nodejs
           macOS: brew install node
+          asdf: asdf install nodejs latest && asdf global nodejs latest
+          mise: mise install node@lts && mise use -g node@lts
         - pnpm: npm install -g pnpm
         - Bun:
-          asdf: asdf install bun latest && asdf set bun latest && asdf set --home bun latest
+          asdf: asdf install bun latest && asdf global bun latest
+          mise: mise install bun@latest && mise use -g bun@latest
           brew: brew install bun
           manual: curl -fsSL https://bun.sh/install | bash
         Or run: mix tailwind.install_deps
@@ -133,32 +178,13 @@ defmodule Defdo.TailwindBuilder.Dependencies do
     cwd = File.cwd!()
 
     cond do
+      is_installed?("mise") ->
+        Logger.info("Using mise to install dependencies")
+        install_with_mise!(cwd)
+
       is_installed?("asdf") ->
         Logger.info("Using asdf to install dependencies")
-
-        System.cmd("asdf", ["plugin", "add", "nodejs"], into: IO.stream())
-        System.cmd("asdf", ["plugin", "add", "rust"], into: IO.stream())
-        System.cmd("asdf", ["plugin", "add", "bun"], into: IO.stream())
-
-        node_latest = latest_with_asdf!("nodejs")
-        rust_latest = latest_with_asdf!("rust")
-        bun_latest = latest_with_asdf!("bun")
-
-        System.cmd("asdf", ["install", "nodejs", node_latest], into: IO.stream())
-        System.cmd("asdf", ["install", "rust", rust_latest], into: IO.stream())
-        System.cmd("asdf", ["install", "bun", bun_latest], into: IO.stream())
-
-        # Compat: asdf >= 0.17 usa 'set'; asdf viejos usan 'local'
-        asdf_set!("nodejs", node_latest, cwd)
-        asdf_set!("rust", rust_latest, cwd)
-        asdf_set!("bun", bun_latest, cwd)
-
-        System.cmd("asdf", ["reshim", "nodejs", node_latest], into: IO.stream())
-        System.cmd("asdf", ["reshim", "rust", rust_latest], into: IO.stream())
-        System.cmd("asdf", ["reshim", "bun", bun_latest], into: IO.stream())
-
-        # Usa el Node de asdf
-        System.cmd("asdf", ["exec", "npm", "install", "-g", "pnpm"], into: IO.stream())
+        install_with_asdf!(cwd)
 
       is_installed?("brew") ->
         Logger.info("Using homebrew to install dependencies")
@@ -169,33 +195,188 @@ defmodule Defdo.TailwindBuilder.Dependencies do
 
       true ->
         Logger.info("Using direct installation methods")
-
-        System.cmd("curl", ["--proto", "=https", "--tlsv1.2", "-sSf", "https://sh.rustup.rs"],
-          into: IO.stream()
-        )
-
-        System.cmd("curl", ["-o", "node.pkg", "https://nodejs.org/dist/latest/node-latest.pkg"],
-          into: IO.stream()
-        )
-
-        System.cmd("sudo", ["installer", "-pkg", "node.pkg", "-target", "/"], into: IO.stream())
-        System.cmd("npm", ["install", "-g", "pnpm"], into: IO.stream())
-        System.cmd("bash", ["-c", "curl -fsSL https://bun.sh/install | bash"], into: IO.stream())
-        Logger.info("If bun is not available yet, add ~/.bun/bin to your PATH")
+        install_direct!()
     end
 
     install_rust_targets!()
     :ok
   end
 
+  defp install_with_mise!(_cwd) do
+    # Ensure system dependencies are available on Linux
+    if host_os() == :linux do
+      Logger.info("Installing Linux system dependencies...")
+      System.cmd("sudo", ["apt-get", "update"], into: IO.stream())
+      System.cmd("sudo", ["apt-get", "install", "-y", "unzip", "curl", "build-essential", "musl-tools", "musl-dev"], into: IO.stream())
+    end
+
+    # mise's 'use -g' command automatically installs and sets global version
+    Logger.info("Installing Node.js via mise...")
+    System.cmd("mise", ["use", "-g", "node"], into: IO.stream())
+
+    Logger.info("Installing Rust via mise...")
+    System.cmd("mise", ["use", "-g", "rust"], into: IO.stream())
+
+    Logger.info("Installing Bun via mise...")
+    System.cmd("mise", ["use", "-g", "bun"], into: IO.stream())
+
+    # Install pnpm globally using mise's node
+    Logger.info("Installing pnpm globally...")
+    System.cmd("mise", ["exec", "--", "npm", "install", "-g", "pnpm"], into: IO.stream())
+
+    Logger.info("""
+
+    ⚠️  IMPORTANT: Shell reload required!
+    Run this command to update your PATH:
+      source ~/.bashrc  # or: source ~/.zshrc
+
+    Then verify installation:
+      bun --version
+      cargo --version
+      pnpm --version
+    """)
+  end
+
+  defp install_with_asdf!(cwd) do
+    # Ensure system dependencies are available on Linux
+    if host_os() == :linux do
+      Logger.info("Installing Linux system dependencies...")
+      System.cmd("sudo", ["apt-get", "update"], into: IO.stream())
+      System.cmd("sudo", ["apt-get", "install", "-y", "unzip", "curl", "build-essential", "musl-tools", "musl-dev"], into: IO.stream())
+    end
+
+    System.cmd("asdf", ["plugin", "add", "nodejs"], into: IO.stream())
+    System.cmd("asdf", ["plugin", "add", "rust"], into: IO.stream())
+    System.cmd("asdf", ["plugin", "add", "bun"], into: IO.stream())
+
+    node_latest = latest_with_asdf!("nodejs")
+    rust_latest = latest_with_asdf!("rust")
+    bun_latest = latest_with_asdf!("bun")
+
+    System.cmd("asdf", ["install", "nodejs", node_latest], into: IO.stream())
+    System.cmd("asdf", ["install", "rust", rust_latest], into: IO.stream())
+    System.cmd("asdf", ["install", "bun", bun_latest], into: IO.stream())
+
+    # Compat: asdf >= 0.17 usa 'set'; asdf viejos usan 'local'
+    asdf_set!("nodejs", node_latest, cwd)
+    asdf_set!("rust", rust_latest, cwd)
+    asdf_set!("bun", bun_latest, cwd)
+
+    System.cmd("asdf", ["reshim", "nodejs", node_latest], into: IO.stream())
+    System.cmd("asdf", ["reshim", "rust", rust_latest], into: IO.stream())
+    System.cmd("asdf", ["reshim", "bun", bun_latest], into: IO.stream())
+
+    # Usa el Node de asdf
+    System.cmd("asdf", ["exec", "npm", "install", "-g", "pnpm"], into: IO.stream())
+  end
+
+  defp install_direct! do
+    case host_os() do
+      :linux ->
+        install_direct_linux!()
+
+      :darwin ->
+        install_direct_macos!()
+
+      _ ->
+        Logger.error("Unsupported operating system for direct installation")
+        raise "Please install dependencies manually or use asdf/mise"
+    end
+  end
+
+  defp install_direct_linux! do
+    Logger.info("Installing dependencies on Linux...")
+
+    # Install system dependencies including musl for cross-compilation
+    Logger.info("Installing system dependencies (unzip, curl, build-essential, musl-tools)...")
+    System.cmd("sudo", ["apt-get", "update"], into: IO.stream())
+    System.cmd("sudo", ["apt-get", "install", "-y", "unzip", "curl", "build-essential", "musl-tools", "musl-dev"], into: IO.stream())
+
+    # Install Rust
+    Logger.info("Installing Rust...")
+    System.cmd("bash", ["-c", "curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y"], into: IO.stream())
+
+    # Install Node.js via NodeSource
+    Logger.info("Installing Node.js...")
+    System.cmd("bash", ["-c", "curl -fsSL https://deb.nodesource.com/setup_lts.x | sudo -E bash -"], into: IO.stream())
+    System.cmd("sudo", ["apt-get", "install", "-y", "nodejs"], into: IO.stream())
+
+    # Install pnpm
+    Logger.info("Installing pnpm...")
+    System.cmd("npm", ["install", "-g", "pnpm"], into: IO.stream())
+
+    # Install Bun
+    Logger.info("Installing Bun...")
+    System.cmd("bash", ["-c", "curl -fsSL https://bun.sh/install | bash"], into: IO.stream())
+
+    Logger.info("""
+
+    ⚠️  IMPORTANT: Shell reload required!
+    Run this command to update your PATH:
+      source ~/.bashrc  # or: source ~/.zshrc
+
+    Then verify installation:
+      bun --version
+      cargo --version
+      pnpm --version
+
+    Tools installed to:
+      ~/.bun/bin (Bun)
+      ~/.cargo/bin (Rust)
+    """)
+  end
+
+  defp install_direct_macos! do
+    Logger.info("Installing dependencies on macOS...")
+
+    # Install Rust
+    System.cmd("curl", ["--proto", "=https", "--tlsv1.2", "-sSf", "https://sh.rustup.rs"],
+      into: IO.stream()
+    )
+
+    # Install Node.js via pkg installer
+    System.cmd("curl", ["-o", "/tmp/node.pkg", "https://nodejs.org/dist/latest/node-latest.pkg"],
+      into: IO.stream()
+    )
+
+    System.cmd("sudo", ["installer", "-pkg", "/tmp/node.pkg", "-target", "/"], into: IO.stream())
+    System.cmd("npm", ["install", "-g", "pnpm"], into: IO.stream())
+
+    # Install Bun
+    System.cmd("bash", ["-c", "curl -fsSL https://bun.sh/install | bash"], into: IO.stream())
+    Logger.info("If bun is not available yet, add ~/.bun/bin to your PATH")
+  end
+
   @doc """
   Installs required Rust targets for TailwindCSS v4.x compilation
+
+  On Linux, this installs BOTH gnu and musl targets:
+    - *-gnu: Uses glibc (standard), no extra tools needed
+    - *-musl: Uses musl libc (portable), requires musl-tools
+
+  Ubuntu/Debian/Raspberry Pi (for musl support):
+    sudo apt-get install -y musl-tools musl-dev
+
+  See SETUP.md for complete pre-requisites
   """
   def install_rust_targets! do
-    Logger.info("Installing required Rust targets...")
+    required_targets = get_required_rust_targets()
+    Logger.info("Installing required Rust targets for #{host_os()}-#{host_arch()}: #{inspect(required_targets)}")
+
+    # Warn Linux users about musl-tools requirement
+    if host_os() == :linux and Enum.any?(required_targets, &String.contains?(&1, "musl")) do
+      Logger.info("""
+
+      📝 Note: Installing musl targets requires system packages.
+      If musl target installation fails, install musl-tools first:
+        Ubuntu/Debian/Raspberry Pi: sudo apt-get install -y musl-tools musl-dev
+        Fedora/RHEL: sudo dnf install -y musl-gcc musl-devel
+        Arch: sudo pacman -S musl
+      """)
+    end
 
     results =
-      for target <- @required_rust_targets do
+      for target <- required_targets do
         install_rust_target!(target)
       end
 
@@ -308,12 +489,14 @@ defmodule Defdo.TailwindBuilder.Dependencies do
   end
 
   defp targets_for_version(version) do
-    Map.get(@tailwind_v4_requirements, version, default_targets(version))
+    # For v4.x, always use platform-specific detection
+    # v3.x doesn't need Rust targets
+    default_targets(version)
   end
 
   defp default_targets(version) when is_binary(version) do
     cond do
-      String.starts_with?(version, "4.") -> @required_rust_targets
+      String.starts_with?(version, "4.") -> get_required_rust_targets()
       true -> []
     end
   end

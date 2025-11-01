@@ -27,3 +27,4 @@ tailwind_builder-*.tar
 
 /tailwindcss*
 .DS_Store
+.vscode
