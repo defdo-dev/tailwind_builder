@@ -38,6 +38,7 @@ IO.puts("Working directory created at: #{tmp_dir}")
 
 # Step 2: Configure Tailwind version
 tailwind_version = "4.1.16"
+daisy_ui_version = "5.4.2"
 path = Path.join(tmp_dir, "tailwindcss-#{tailwind_version}")
 IO.puts("Using Tailwind CSS version: #{tailwind_version}")
 
@@ -48,10 +49,10 @@ if not File.exists?(path) do
   IO.puts("Download complete: #{inspect(download_result)}")
   
   # Define DaisyUI v5 plugin configuration
-  daisyui_v5 = %{"version" => ~s["daisyui": "^5.3.10"]}
+  daisyui_plugin = %{"version" => ~s["daisyui": "^#{daisy_ui_version}]}
     
   IO.puts("Adding DaisyUI v5 plugin...")
-  patch_result = Defdo.TailwindBuilder.add_plugin(daisyui_v5, tailwind_version, tmp_dir)
+  patch_result = Defdo.TailwindBuilder.add_plugin(daisyui_plugin, tailwind_version, tmp_dir)
   IO.puts("Plugin added: #{inspect(patch_result)}")
 else
   IO.puts("Tailwind source already exists at #{path}")
@@ -111,4 +112,4 @@ IO.puts("Files deployed: #{length(deploy_result)}")
 IO.puts("========================")
 ```
 
-<!-- livebook:{"offset":3568,"stamp":{"token":"XCP._ytjMTHfWk_V8QoFGT-S-nNLEkOez7NktIwc8eFMy6Iu-OYaZsiXvDBp-p3QksAi-Hy-1DmUFZyGJDRnZu7Cdfx1qp2LX-Wf4dxF2Jnn_76AgpyH_gxkE2iCaTFqOh9vut2LAR3LkKZbOTHknS6KfRLIEMR7Nt2aPmxCYAXhPon208Nqg0Ts2hSGuz4yXZcJtwk","version":2}} -->
+<!-- livebook:{"offset":3615,"stamp":{"token":"XCP.jnCGz3snrZZNSn8Y__nCJ4-wH3YDpgCDM3ePPdrlmRf3zsDU7BIIYKC1C49XN0agq1Rhd_gJ3dYwykROCzraRy1-1zr_6QC0trnkmf97RczEEzMguIabfjTqyooVQXjHyVjKMyNeaYOo98q1sPak7kx8HL4pYkOul3L5sCiDl4REN1K63hxzycnXFT6OCcxjbZQ","version":2}} -->

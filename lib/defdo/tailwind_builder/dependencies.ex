@@ -11,7 +11,6 @@ defmodule Defdo.TailwindBuilder.Dependencies do
   require Logger
 
   @required_tools ~w(npm pnpm node cargo rustup bun)
-  @ubuntu_required_tools ~w(unzip curl)
 
   # Rust target required for TailwindCSS v4 Oxide compilation (always needed for v4.x)
   @wasm_target "wasm32-wasip1-threads"
@@ -50,6 +49,7 @@ defmodule Defdo.TailwindBuilder.Dependencies do
 
   defp host_arch do
     arch = :erlang.system_info(:system_architecture) |> to_string()
+
     cond do
       String.contains?(arch, "aarch64") or String.contains?(arch, "arm64") -> :arm64
       String.contains?(arch, "x86_64") or String.contains?(arch, "amd64") -> :x64
@@ -207,7 +207,21 @@ defmodule Defdo.TailwindBuilder.Dependencies do
     if host_os() == :linux do
       Logger.info("Installing Linux system dependencies...")
       System.cmd("sudo", ["apt-get", "update"], into: IO.stream())
-      System.cmd("sudo", ["apt-get", "install", "-y", "unzip", "curl", "build-essential", "musl-tools", "musl-dev"], into: IO.stream())
+
+      System.cmd(
+        "sudo",
+        [
+          "apt-get",
+          "install",
+          "-y",
+          "unzip",
+          "curl",
+          "build-essential",
+          "musl-tools",
+          "musl-dev"
+        ],
+        into: IO.stream()
+      )
     end
 
     # mise's 'use -g' command automatically installs and sets global version
@@ -242,7 +256,21 @@ defmodule Defdo.TailwindBuilder.Dependencies do
     if host_os() == :linux do
       Logger.info("Installing Linux system dependencies...")
       System.cmd("sudo", ["apt-get", "update"], into: IO.stream())
-      System.cmd("sudo", ["apt-get", "install", "-y", "unzip", "curl", "build-essential", "musl-tools", "musl-dev"], into: IO.stream())
+
+      System.cmd(
+        "sudo",
+        [
+          "apt-get",
+          "install",
+          "-y",
+          "unzip",
+          "curl",
+          "build-essential",
+          "musl-tools",
+          "musl-dev"
+        ],
+        into: IO.stream()
+      )
     end
 
     System.cmd("asdf", ["plugin", "add", "nodejs"], into: IO.stream())
@@ -290,15 +318,31 @@ defmodule Defdo.TailwindBuilder.Dependencies do
     # Install system dependencies including musl for cross-compilation
     Logger.info("Installing system dependencies (unzip, curl, build-essential, musl-tools)...")
     System.cmd("sudo", ["apt-get", "update"], into: IO.stream())
-    System.cmd("sudo", ["apt-get", "install", "-y", "unzip", "curl", "build-essential", "musl-tools", "musl-dev"], into: IO.stream())
+
+    System.cmd(
+      "sudo",
+      ["apt-get", "install", "-y", "unzip", "curl", "build-essential", "musl-tools", "musl-dev"],
+      into: IO.stream()
+    )
 
     # Install Rust
     Logger.info("Installing Rust...")
-    System.cmd("bash", ["-c", "curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y"], into: IO.stream())
+
+    System.cmd(
+      "bash",
+      ["-c", "curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y"],
+      into: IO.stream()
+    )
 
     # Install Node.js via NodeSource
     Logger.info("Installing Node.js...")
-    System.cmd("bash", ["-c", "curl -fsSL https://deb.nodesource.com/setup_lts.x | sudo -E bash -"], into: IO.stream())
+
+    System.cmd(
+      "bash",
+      ["-c", "curl -fsSL https://deb.nodesource.com/setup_lts.x | sudo -E bash -"],
+      into: IO.stream()
+    )
+
     System.cmd("sudo", ["apt-get", "install", "-y", "nodejs"], into: IO.stream())
 
     # Install pnpm
@@ -361,7 +405,10 @@ defmodule Defdo.TailwindBuilder.Dependencies do
   """
   def install_rust_targets! do
     required_targets = get_required_rust_targets()
-    Logger.info("Installing required Rust targets for #{host_os()}-#{host_arch()}: #{inspect(required_targets)}")
+
+    Logger.info(
+      "Installing required Rust targets for #{host_os()}-#{host_arch()}: #{inspect(required_targets)}"
+    )
 
     # Warn Linux users about musl-tools requirement
     if host_os() == :linux and Enum.any?(required_targets, &String.contains?(&1, "musl")) do

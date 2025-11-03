@@ -186,9 +186,17 @@ defmodule Defdo.TailwindBuilder do
   - `debug` - Enable debug output
   - `target` - Optional Rust target triple (e.g., "x86_64-unknown-linux-musl")
   """
-  def build(tailwind_version \\ @tailwind_latest, tailwind_src \\ File.cwd!(), debug \\ false, target \\ nil) do
+  def build(
+        tailwind_version \\ @tailwind_latest,
+        tailwind_src \\ File.cwd!(),
+        debug \\ false,
+        target \\ nil
+      ) do
     target_info = if target, do: " for target #{target}", else: ""
-    Logger.info("Building Tailwind v#{tailwind_version}#{target_info} using new modular architecture")
+
+    Logger.info(
+      "Building Tailwind v#{tailwind_version}#{target_info} using new modular architecture"
+    )
 
     build_opts = [
       version: tailwind_version,
