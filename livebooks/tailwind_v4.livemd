@@ -37,8 +37,8 @@ File.mkdir_p!(tmp_dir)
 IO.puts("Working directory created at: #{tmp_dir}")
 
 # Step 2: Configure Tailwind version
-tailwind_version = "4.1.16"
-daisy_ui_version = "5.4.2"
+tailwind_version = "4.2.2"
+daisy_ui_version = "5.5.19"
 path = Path.join(tmp_dir, "tailwindcss-#{tailwind_version}")
 IO.puts("Using Tailwind CSS version: #{tailwind_version}")
 
@@ -112,4 +112,4 @@ IO.puts("Files deployed: #{length(deploy_result)}")
 IO.puts("========================")
 ```
 
-<!-- livebook:{"offset":3615,"stamp":{"token":"XCP.jnCGz3snrZZNSn8Y__nCJ4-wH3YDpgCDM3ePPdrlmRf3zsDU7BIIYKC1C49XN0agq1Rhd_gJ3dYwykROCzraRy1-1zr_6QC0trnkmf97RczEEzMguIabfjTqyooVQXjHyVjKMyNeaYOo98q1sPak7kx8HL4pYkOul3L5sCiDl4REN1K63hxzycnXFT6OCcxjbZQ","version":2}} -->
+<!-- livebook:{"offset":3615,"stamp":{"token":"XCP._9QYw3TV5-NtlltkSi6sF8ICW8Tc5_pTA7wWVU_1eVvKwcT9SMp82SvxvVWLFLTZWGALJDpobdN8mUFaLLL15YTsRTuZy5KcoJ1hMkzl8N9Yb1suKw35Vg8CfyfJzI09P7-CiJQXaWwRBSmMAkGpPmVJFkWWf4ZqYmkHcyRE1gWcKGUkqcGjqQ-U6t_Vi5klCvo","version":2}} -->
