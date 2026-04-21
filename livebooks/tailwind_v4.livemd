@@ -64,6 +64,9 @@ end
 IO.puts("Building Tailwind CLI...")
 {:ok, build_result} = Defdo.TailwindBuilder.build(tailwind_version, tmp_dir)
 IO.puts("Build complete: #{inspect(build_result)}")
+IO.puts("Manifest status: #{inspect(build_result.manifest.status)}")
+IO.puts("Build manifest: #{build_result.manifest.build_manifest_path}")
+IO.puts("Release manifest: #{build_result.manifest.release_manifest_path}")
 ```
 
 ## Deploy to r2

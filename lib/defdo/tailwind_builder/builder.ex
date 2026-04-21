@@ -13,7 +13,7 @@ defmodule Defdo.TailwindBuilder.Builder do
   """
 
   require Logger
-  alias Defdo.TailwindBuilder.{Core, Telemetry, Metrics}
+  alias Defdo.TailwindBuilder.{Core, Telemetry, Metrics, ManifestManager}
 
   @doc """
   Compile a Tailwind CSS project with comprehensive telemetry tracking
@@ -65,14 +65,25 @@ defmodule Defdo.TailwindBuilder.Builder do
         :source_path,
         :debug,
         :validate_tools,
-        :target
+        :target,
+        :target_arch,
+        :flavor,
+        :manifest_update,
+        :manifest_dir,
+        :build_manifest_path,
+        :release_manifest_path,
+        :expected_targets,
+        :nodes,
+        :workers
       ])
 
     version = opts[:version] || raise ArgumentError, "version is required"
     source_path = opts[:source_path] || raise ArgumentError, "source_path is required"
     debug = Keyword.get(opts, :debug, false)
     validate_tools = Keyword.get(opts, :validate_tools, true)
-    target = Keyword.get(opts, :target, nil)
+    target = resolve_build_target(version, opts)
+    manifest_target = resolve_manifest_target(version, opts)
+    manifest_update = Keyword.get(opts, :manifest_update, true)
 
     # Track build start
     start_time = System.monotonic_time()
@@ -93,35 +104,67 @@ defmodule Defdo.TailwindBuilder.Builder do
            {:compile, execute_compilation_with_telemetry(version, paths, debug, target)} do
       Logger.debug("Compilation result: #{inspect(compilation_result)}")
 
-      end_time = System.monotonic_time()
-      duration_ms = System.convert_time_unit(end_time - start_time, :native, :millisecond)
+      manifest_result =
+        if manifest_update do
+          update_post_build_manifests(opts, version, source_path, paths, target, manifest_target)
+        else
+          {:ok, %{status: :skipped}}
+        end
 
-      # Calculate output size if possible
-      output_size = calculate_output_size(paths)
+      case manifest_result do
+        {:ok, manifest_state} ->
+          end_time = System.monotonic_time()
+          duration_ms = System.convert_time_unit(end_time - start_time, :native, :millisecond)
 
-      result = %{
-        version: version,
-        compilation_method: compilation_method,
-        source_path: source_path,
-        tailwind_root: paths.tailwind_root,
-        standalone_root: paths.standalone_root,
-        debug_mode: debug,
-        duration_ms: duration_ms,
-        output_size_bytes: output_size
-      }
+          # Calculate output size if possible
+          output_size = calculate_output_size(paths)
 
-      # Record comprehensive metrics
-      plugins = extract_plugins_from_paths(paths)
-      Metrics.record_build_metrics(version, plugins, duration_ms, output_size, :success)
+          result = %{
+            version: version,
+            compilation_method: compilation_method,
+            source_path: source_path,
+            tailwind_root: paths.tailwind_root,
+            standalone_root: paths.standalone_root,
+            debug_mode: debug,
+            duration_ms: duration_ms,
+            output_size_bytes: output_size,
+            manifest: manifest_state
+          }
 
-      Telemetry.track_event(:build, :success, %{
-        version: version,
-        duration_ms: duration_ms,
-        output_size_bytes: output_size,
-        compilation_method: compilation_method
-      })
+          # Record comprehensive metrics
+          plugins = extract_plugins_from_paths(paths)
+          Metrics.record_build_metrics(version, plugins, duration_ms, output_size, :success)
 
-      {:ok, result}
+          Telemetry.track_event(:build, :success, %{
+            version: version,
+            duration_ms: duration_ms,
+            output_size_bytes: output_size,
+            compilation_method: compilation_method
+          })
+
+          {:ok, result}
+
+        {:error, reason} ->
+          end_time = System.monotonic_time()
+          duration_ms = System.convert_time_unit(end_time - start_time, :native, :millisecond)
+
+          output_size = calculate_output_size(paths)
+          plugins = extract_plugins_from_paths(paths)
+
+          Metrics.record_error_metrics(:build, :manifest_update, reason)
+          Metrics.record_build_metrics(version, plugins, duration_ms, output_size, :error)
+
+          Telemetry.track_event(:build, :error, %{
+            version: version,
+            step: :manifest_update,
+            error: inspect(reason),
+            duration_ms: duration_ms,
+            compilation_method: compilation_method
+          })
+
+          Logger.error("Manifest update failed: #{inspect(reason)}")
+          {:error, {:manifest_update_failed, reason}}
+      end
     else
       {step, error} ->
         end_time = System.monotonic_time()
@@ -746,6 +789,66 @@ defmodule Defdo.TailwindBuilder.Builder do
 
   defp version_is_v4?(version) when is_binary(version), do: String.starts_with?(version, "4.")
   defp version_is_v4?(_), do: false
+
+  defp resolve_build_target(version, opts) do
+    target = Keyword.get(opts, :target)
+    target_arch = Keyword.get(opts, :target_arch)
+
+    cond do
+      is_binary(target) ->
+        target
+
+      is_atom(target) ->
+        Atom.to_string(target)
+
+      is_binary(target_arch) and Core.can_compile_for_target?(version, target_arch) ->
+        target_arch
+
+      is_atom(target_arch) and Core.can_compile_for_target?(version, Atom.to_string(target_arch)) ->
+        Atom.to_string(target_arch)
+
+      true ->
+        nil
+    end
+  end
+
+  defp resolve_manifest_target(version, opts) do
+    target = Keyword.get(opts, :target)
+    target_arch = Keyword.get(opts, :target_arch)
+
+    cond do
+      is_binary(target) ->
+        target
+
+      is_atom(target) ->
+        Atom.to_string(target)
+
+      is_binary(target_arch) and Core.can_compile_for_target?(version, target_arch) ->
+        target_arch
+
+      is_atom(target_arch) and Core.can_compile_for_target?(version, Atom.to_string(target_arch)) ->
+        Atom.to_string(target_arch)
+
+      true ->
+        Core.get_host_architecture()
+    end
+  end
+
+  defp update_post_build_manifests(opts, version, source_path, paths, target, manifest_target) do
+    ManifestManager.upsert_post_build(
+      version: version,
+      source_path: source_path,
+      standalone_root: paths.standalone_root,
+      target: target || manifest_target,
+      flavor: Keyword.get(opts, :flavor, "standalone"),
+      expected_targets: Keyword.get(opts, :expected_targets),
+      nodes: Keyword.get(opts, :nodes),
+      workers: Keyword.get(opts, :workers),
+      manifest_dir: Keyword.get(opts, :manifest_dir),
+      build_manifest_path: Keyword.get(opts, :build_manifest_path),
+      release_manifest_path: Keyword.get(opts, :release_manifest_path)
+    )
+  end
 
   defp ensure_turbo_env_passthrough(tailwind_root) do
     turbo_path = Path.join(tailwind_root, "turbo.json")

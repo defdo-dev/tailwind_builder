@@ -24,6 +24,7 @@ defmodule Defdo.TailwindBuilder do
     Builder,
     Deployer,
     VersionFetcher,
+    Orchestrator,
     DefaultConfigProvider
   }
 
@@ -213,7 +214,8 @@ defmodule Defdo.TailwindBuilder do
           root: tailwind_src,
           version: tailwind_version,
           tailwind_root: build_result.tailwind_root,
-          tailwind_standalone_root: build_result.standalone_root
+          tailwind_standalone_root: build_result.standalone_root,
+          manifest: build_result.manifest
         }
 
         {:ok, result}
@@ -241,6 +243,17 @@ defmodule Defdo.TailwindBuilder do
             {:error, "Build failed: #{inspect(other)}"}
         end
     end
+  end
+
+  @doc """
+  Runs the complete Tailwind build pipeline.
+
+  This is the transparent public façade for the orchestrated workflow.
+  `target` is the preferred deployment selector, `output_dir` is the working
+  directory for local builds, and `skip_deploy` disables the deploy phase.
+  """
+  def build_and_deploy(opts \\ []) do
+    Orchestrator.build_and_deploy(opts)
   end
 
   @doc """

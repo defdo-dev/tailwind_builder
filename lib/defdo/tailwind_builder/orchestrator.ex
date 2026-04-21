@@ -72,24 +72,30 @@ defmodule Defdo.TailwindBuilder.Orchestrator do
       Keyword.validate!(opts, [
         :version,
         :plugins,
+        :target,
         :destination,
+        :output_dir,
         :config_provider,
         :debug,
         :skip_deploy
       ])
 
     config_provider = opts[:config_provider] || DefaultConfigProvider
-    version = opts[:version]
+    version = opts[:version] || raise ArgumentError, "version is required"
     plugins = opts[:plugins] || []
     debug = Keyword.get(opts, :debug, false)
-    skip_deploy = Keyword.get(opts, :skip_deploy, false)
+    target = opts[:target] || opts[:destination]
+    skip_deploy = Keyword.get(opts, :skip_deploy, false) or target == :local
+    working_dir =
+      Keyword.get(opts, :output_dir) ||
+        Path.join(System.tmp_dir!(), "tailwind_build_#{version}")
 
     Logger.info("Starting Tailwind build pipeline for version #{version}")
 
     with {:validate_policy, :ok} <-
            {:validate_policy, validate_build_policy(version, plugins, config_provider)},
-         {:download, {:ok, download_result}} <-
-           {:download, download_tailwind(version, config_provider)},
+        {:download, {:ok, download_result}} <-
+           {:download, download_tailwind(version, config_provider, working_dir)},
          {:plugins, {:ok, plugin_results}} <-
            {:plugins,
             apply_plugins(plugins, version, download_result.destination, config_provider)},
@@ -97,7 +103,7 @@ defmodule Defdo.TailwindBuilder.Orchestrator do
            {:build, compile_tailwind(version, download_result.destination, debug)},
          {:deploy, deploy_result} <-
            {:deploy,
-            maybe_deploy(build_result, version, opts[:destination], config_provider, skip_deploy)} do
+            maybe_deploy(build_result, version, target, config_provider, skip_deploy)} do
       result = %{
         version: version,
         pipeline: :complete,
@@ -211,9 +217,8 @@ defmodule Defdo.TailwindBuilder.Orchestrator do
     end)
   end
 
-  defp download_tailwind(version, config_provider) do
+  defp download_tailwind(version, config_provider, destination) do
     checksum = get_expected_checksum(version, config_provider)
-    destination = System.tmp_dir!() |> Path.join("tailwind_build_#{version}")
 
     Downloader.download_and_extract(
       version: version,

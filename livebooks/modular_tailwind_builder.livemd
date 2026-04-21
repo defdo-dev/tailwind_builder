@@ -225,6 +225,8 @@ try do
   IO.puts("✅ BUILD SUCCESSFUL!")
   IO.puts("   Duration: #{duration_ms}ms")
   IO.puts("   Result: #{inspect(result)}")
+  IO.puts("   Build manifest: #{result.build.manifest.build_manifest_path}")
+  IO.puts("   Release manifest: #{result.build.manifest.release_manifest_path}")
   
   # Show updated telemetry stats
   new_stats = Defdo.TailwindBuilder.Telemetry.get_stats()

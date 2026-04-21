@@ -278,6 +278,7 @@ The LiveBook provides:
 - Interactive exploration of all modules
 - Real-time telemetry demonstration
 - Step-by-step build process walkthrough
+- Automatic manifest generation with visible `build-manifest.json` and `release-manifest.json` paths
 - Dashboard visualization examples
 
 ## 🔍 Troubleshooting
