@@ -23,6 +23,7 @@ defmodule Defdo.TailwindBuilder do
     PluginManager,
     Builder,
     Deployer,
+    Release,
     VersionFetcher,
     DefaultConfigProvider
   }
@@ -36,7 +37,7 @@ defmodule Defdo.TailwindBuilder do
       "statement" => ~s['daisyui': require('daisyui')]
     },
     "daisyui_v5" => %{
-      "version" => ~s["daisyui": "^5.1.27"]
+      "version" => ~s["daisyui": "5.5.19"]
       # No "statement" for v4.x - uses index.ts patching with ES modules instead
     }
   }
@@ -148,6 +149,13 @@ defmodule Defdo.TailwindBuilder do
   """
   def calculate_tailwind_checksum(version) do
     VersionFetcher.calculate_tailwind_checksum(version)
+  end
+
+  @doc """
+  Build and publish a release with release metadata and smoke tests.
+  """
+  def build_release(opts \\ []) do
+    Release.run(opts)
   end
 
   @doc """

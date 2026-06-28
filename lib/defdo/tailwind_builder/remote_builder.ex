@@ -12,7 +12,7 @@ defmodule Defdo.TailwindBuilder.RemoteBuilder do
       {:ok, result} = RemoteBuilder.build_remote([
         version: "4.1.14",
         target_arch: "linux-x64",
-        plugins: [%{name: "daisyui", version: "^5.1.27"}],
+        plugins: [%{name: "daisyui", version: "5.5.19"}],
         source_path: "/tmp/tailwind-source"
       ])
 
@@ -29,6 +29,7 @@ defmodule Defdo.TailwindBuilder.RemoteBuilder do
   """
 
   require Logger
+  alias Defdo.TailwindBuilder.Core.Targets
   alias Defdo.TailwindBuilder.Telemetry
 
   # 5 minutes
@@ -58,7 +59,7 @@ defmodule Defdo.TailwindBuilder.RemoteBuilder do
            {:download_binary, download_build_binary(build_result, opts)} do
       result = %{
         version: opts[:version],
-        target_arch: opts[:target_arch],
+        target_arch: Targets.canonical_target_key(opts[:target_arch]) || opts[:target_arch],
         compilation_method: :remote,
         build_id: build_id,
         binary_path: binary_path,
@@ -107,7 +108,7 @@ defmodule Defdo.TailwindBuilder.RemoteBuilder do
   """
   def supports_architecture?(target_arch) do
     case supported_architectures() do
-      {:ok, architectures} -> target_arch in architectures
+      {:ok, architectures} -> Enum.any?(architectures, &Targets.matches?(target_arch, &1))
       {:error, _} -> false
     end
   end
@@ -136,7 +137,11 @@ defmodule Defdo.TailwindBuilder.RemoteBuilder do
     # Validate target architecture format
     target_arch = opts[:target_arch]
 
-    unless String.match?(target_arch, ~r/^[a-z]+-[a-z0-9]+$/) do
+    normalized_target = Targets.canonical_target_key(target_arch)
+    build_target = Targets.build_target(target_arch)
+
+    unless normalized_target || build_target ||
+             String.match?(target_arch, ~r/^[a-z0-9_]+(?:-[a-z0-9_]+)+$/) do
       raise ArgumentError, "Invalid target architecture format: #{target_arch}"
     end
 
@@ -250,15 +255,7 @@ defmodule Defdo.TailwindBuilder.RemoteBuilder do
     File.mkdir_p!(output_dir)
 
     # Determine output filename
-    output_filename =
-      case target_arch do
-        "linux-x64" -> "tailwindcss-linux-x64"
-        "linux-arm64" -> "tailwindcss-linux-arm64"
-        "darwin-x64" -> "tailwindcss-macos-x64"
-        "darwin-arm64" -> "tailwindcss-macos-arm64"
-        "win32-x64" -> "tailwindcss-windows-x64.exe"
-        _ -> "tailwindcss-#{target_arch}"
-      end
+    output_filename = Targets.artifact_name(target_arch) || "tailwindcss-#{target_arch}"
 
     output_path = Path.join(output_dir, output_filename)
 

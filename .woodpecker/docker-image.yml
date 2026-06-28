@@ -1,0 +1,38 @@
+---
+# Toolchain image build pipeline.
+#
+# Builds hub.defdo.ninja/defdo/tailwind-builder for linux/amd64 and
+# linux/arm64. The buildkit_host_arm64 secret points to the native ARM64
+# bare-metal node so Rust/WASM compilation runs without QEMU.
+#
+# Trigger: GitHub tag push (e.g. 0.1.0)
+#
+# Required secrets:
+#   buildkit_host_amd64   — BuildKit daemon address for linux/amd64 node
+#   buildkit_host_arm64   — BuildKit daemon address for linux/arm64 node
+#   docker_username       — hub.defdo.ninja login
+#   docker_password       — hub.defdo.ninja password
+
+when:
+  - event: tag
+
+steps:
+  - name: build-and-push
+    image: woodpeckerci/plugin-docker-buildx
+    settings:
+      repo: hub.defdo.ninja/defdo/tailwind-builder
+      registry: hub.defdo.ninja
+      username:
+        from_secret: docker_username
+      password:
+        from_secret: docker_password
+      dockerfile: docker/tailwind-builder-v4/Dockerfile
+      platforms: linux/amd64,linux/arm64
+      tags:
+        - latest
+        - "${CI_COMMIT_TAG}"
+    environment:
+      BUILDKIT_HOST_AMD64:
+        from_secret: buildkit_host_amd64
+      BUILDKIT_HOST_ARM64:
+        from_secret: buildkit_host_arm64

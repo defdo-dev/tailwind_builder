@@ -10,7 +10,7 @@ defmodule Defdo.TailwindBuilder.Core.TechnicalConstraints do
   """
 
   alias Defdo.TailwindBuilder.Core.Capabilities
-  alias Defdo.TailwindBuilder.Core.ArchitectureMatrix
+  alias Defdo.TailwindBuilder.Core.{ArchitectureMatrix, Targets}
 
   @doc """
   Check if a technical operation is possible (not whether it's allowed)
@@ -99,9 +99,10 @@ defmodule Defdo.TailwindBuilder.Core.TechnicalConstraints do
 
   defp can_run_on_architecture?(version, arch) when is_binary(version) and is_binary(arch) do
     supported = Capabilities.get_supported_architectures(version)
-    # Convert arch to atom for comparison if it's a string
-    arch_atom = if is_binary(arch), do: String.to_atom(arch), else: arch
-    arch_atom in supported
+
+    Enum.any?(supported, fn supported_target ->
+      Targets.matches?(arch, supported_target)
+    end)
   end
 
   defp get_compilation_requirements(version) do
@@ -179,7 +180,7 @@ defmodule Defdo.TailwindBuilder.Core.TechnicalConstraints do
   defp validate_architecture_support(version, target_arch)
        when is_binary(version) and is_binary(target_arch) do
     if can_cross_compile?(version, target_arch) or
-         target_arch == ArchitectureMatrix.get_host_architecture() do
+         Targets.matches?(target_arch, ArchitectureMatrix.get_host_architecture()) do
       :ok
     else
       {:error, :architecture_not_supported}

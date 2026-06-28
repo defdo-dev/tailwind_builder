@@ -9,7 +9,7 @@ A comprehensive, modular system for downloading, building, and deploying Tailwin
 - **Advanced Telemetry**: Real-time monitoring, metrics, and dashboards
 - **Plugin Support**: Easy integration of TailwindCSS plugins (DaisyUI, Typography, etc.)
 - **Multiple Deployment Targets**: S3, R2, CDN, and local deployment
-- **Comprehensive Testing**: 267+ tests ensuring reliability
+- **Comprehensive Testing**: 170+ tests ensuring reliability
 - **Zero Warnings**: Production-ready code quality
 
 ## 📋 Table of Contents
@@ -17,6 +17,8 @@ A comprehensive, modular system for downloading, building, and deploying Tailwin
 - [Installation](#installation)
 - [Quick Start](#quick-start) 
 - [Architecture](#architecture)
+- [Hub Roadmap](#hub-roadmap)
+- [Release Work Plan](#release-work-plan)
 - [Telemetry & Monitoring](#telemetry--monitoring)
 - [API Reference](#api-reference)
 - [Configuration](#configuration)
@@ -134,6 +136,59 @@ TailwindBuilder/
 - **Telemetry**: Real-time span tracking and structured logging
 - **Dashboard**: Live monitoring with multiple output formats
 
+## Hub Roadmap
+
+The current repository provides the shared build core. The proposed reactive server-side architecture for remote workers, discovered targets, release states, and artifact publication is documented in [HUB_ARCHITECTURE.md](HUB_ARCHITECTURE.md).
+
+## Workspace
+
+This repo now acts as the core project in a workspace layout. The sibling apps live next to it:
+
+- `/Users/paridin/Devel/defdo_projects/tailwind_builder_hub`
+- `/Users/paridin/Devel/defdo_projects/tailwind_builder_worker`
+
+Use `make` from this repo to run the workspace:
+
+```bash
+make setup
+make compile
+make test
+make server
+```
+
+## Release Work Plan
+
+The immediate release execution plan is documented in [RELEASE_WORK_PLAN.md](RELEASE_WORK_PLAN.md). It covers R2 hardening, manifest shape, post-upload verification, remote release execution, promotion, and the path toward `tailwind_builder_hub` and `tailwind_builder_worker`.
+
+## Contract Slices
+
+The bounded implementation slices for this package are documented in
+[`docs/CONTRACT_SLICES.md`](docs/CONTRACT_SLICES.md). Read that file before
+changing target mapping, release orchestration, deployer behavior, or remote
+execution adapters.
+
+## Release Flow
+
+The repository now includes a release entrypoint for the pinned Tailwind `4.2.2` candidate flow with DaisyUI `5.5.19`.
+
+```bash
+R2_ACCESS_KEY_ID=...
+R2_SECRET_ACCESS_KEY=...
+R2_HOST=...
+R2_REGION=auto \
+mix tailwind.release \
+  --version 4.2.2 \
+  --channel v4.2.2-rc1 \
+  --config-provider testing \
+  --bucket defdo \
+  --prefix tailwind_cli_daisyui \
+  --storage-base-url https://storage.defdo.de \
+  --plugin daisyui_v5 \
+  --smoke-test
+```
+
+Use `--config-provider production|staging|testing|development` to switch policy sets without editing code.
+
 ## 📊 Telemetry & Monitoring
 
 ### Starting Telemetry
@@ -232,20 +287,23 @@ provider = Defdo.TailwindBuilder.ConfigProviderFactory.get_provider()
 
 ### Deployment Configuration
 
-For R2/S3 deployment, set these environment variables:
+For Cloudflare R2 deployment, set these environment variables:
 
 ```bash
-export AWS_ACCESS_KEY_ID="your-access-key"
-export AWS_SECRET_ACCESS_KEY="your-secret-key"
-export CLOUDFLARE_ACCOUNT_ID="your-account-id"  # For R2
+export R2_ACCESS_KEY_ID="your-access-key"
+export R2_SECRET_ACCESS_KEY="your-secret-key"
+export R2_HOST="https://<account-id>.r2.cloudflarestorage.com"
+export R2_REGION="auto"
 ```
+
+`AWS_ACCESS_KEY_ID` and `AWS_SECRET_ACCESS_KEY` are still accepted as fallback names for other S3-compatible environments, but `R2_*` is the preferred path for this repository.
 
 ## 🧪 Testing
 
 Run the complete test suite:
 
 ```bash
-# All tests (267 tests)
+# All tests (170 tests)
 mix test
 
 # Specific test categories

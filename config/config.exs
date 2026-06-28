@@ -1,12 +1,12 @@
 import Config
 
-# Configure Req with reasonable defaults
+config :logger, :default_formatter,
+  format: "$time $metadata[$level] $message\n",
+  metadata: [:request_id]
+
 config :req,
   timeout: 30_000,
   retry: [
     max_retries: 3,
     retry_delay: fn attempt -> 200 * attempt end
   ]
-
-# Development and test environment overrides
-import_config "#{config_env()}.exs"

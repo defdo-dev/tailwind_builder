@@ -112,7 +112,7 @@ defmodule Defdo.TailwindBuilder.SmartBuilder do
         :local
 
       # Target matches host - prefer local
-      target_arch == host_arch ->
+      Core.targets_match?(target_arch, host_arch) ->
         :local
 
       # Cross-compilation requested - use remote (we removed cross-compilation)

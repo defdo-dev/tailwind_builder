@@ -22,7 +22,7 @@ defmodule Defdo.TailwindBuilder.ConfigProviders.StagingConfigProvider do
       "compatible_versions" => ["3.x", "4.x"]
     },
     "daisyui_v5" => %{
-      "version" => ~s["daisyui": "^5.0.49"],
+      "version" => ~s["daisyui": "5.5.19"],
       "description" => "Semantic component classes for Tailwind CSS v5",
       "npm_name" => "daisyui",
       "compatible_versions" => ["4.x"]
@@ -49,6 +49,7 @@ defmodule Defdo.TailwindBuilder.ConfigProviders.StagingConfigProvider do
     "4.0.9" => "7c36fdcdfed4d1b690a56a1267457a8ac9c640ccae2efcaed59f5053d330000a",
     "4.0.17" => "3590bcb90a75c32ba8b10d692d26838caedbc267a57db23931694abc9598c873",
     "4.1.11" => "149b7db8417a4a0419ada1d2dc428a11202fc6b971f037b7a8527371c59e0cae",
+    "4.2.2" => "b8ff36e8115f56883638d593563418ee279be9f8304107add89f79d9cbf5b147",
     # Release candidates for staging testing
     "4.2.0-rc.1" => "rc_checksum_for_staging_testing"
   }

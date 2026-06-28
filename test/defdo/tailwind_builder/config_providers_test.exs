@@ -86,6 +86,7 @@ defmodule Defdo.TailwindBuilder.ConfigProvidersTest do
 
       assert is_map(plugins)
       assert Map.has_key?(plugins, "daisyui")
+      assert Map.has_key?(plugins, "daisyui_v5")
       assert Map.has_key?(plugins, "@tailwindcss/typography")
 
       # Should NOT have experimental plugins
@@ -103,6 +104,7 @@ defmodule Defdo.TailwindBuilder.ConfigProvidersTest do
 
       # Should allow stable versions
       assert ProductionConfigProvider.get_version_policy("3.4.17") == :allowed
+      assert ProductionConfigProvider.get_version_policy("4.2.2") == :allowed
     end
 
     test "has conservative operation limits" do
@@ -176,6 +178,7 @@ defmodule Defdo.TailwindBuilder.ConfigProvidersTest do
 
       # Should allow stable versions
       assert StagingConfigProvider.get_version_policy("3.4.17") == :allowed
+      assert StagingConfigProvider.get_version_policy("4.2.2") == :allowed
 
       # Should block unknown versions (more restrictive than development)
       assert StagingConfigProvider.get_version_policy("99.99.99") == :blocked
@@ -232,6 +235,7 @@ defmodule Defdo.TailwindBuilder.ConfigProvidersTest do
 
       assert is_map(plugins)
       assert Map.has_key?(plugins, "daisyui")
+      assert Map.has_key?(plugins, "daisyui_v5")
       # Special test plugin
       assert Map.has_key?(plugins, "test-plugin")
     end

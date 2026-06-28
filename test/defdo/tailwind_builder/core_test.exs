@@ -77,6 +77,14 @@ defmodule Defdo.TailwindBuilder.CoreTest do
       # Updated: v4 no longer uses :host_only
       refute :host_only in architectures
     end
+
+    test "v4 canonical target keys are available for platform planning" do
+      target_keys = Core.get_available_target_keys("4.1.11")
+
+      assert "linux-x64" in target_keys
+      assert "macos-arm64" in target_keys
+      assert "windows-x64" in target_keys
+    end
   end
 
   describe "technical feasibility validation" do
@@ -97,6 +105,12 @@ defmodule Defdo.TailwindBuilder.CoreTest do
       assert length(v4_archs) > 10
       assert :"x86_64-unknown-linux-gnu" in v4_archs
       assert :"aarch64-apple-darwin" in v4_archs
+    end
+
+    test "v4 accepts canonical platform target keys" do
+      assert Core.can_compile_for_target?("4.1.11", "macos-arm64")
+      assert Core.can_compile_for_target?("4.1.11", "windows-x64")
+      assert Core.can_compile_for_target?("4.1.11", "linux-arm64")
     end
 
     test "rejects unsupported version" do

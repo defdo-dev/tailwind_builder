@@ -6,7 +6,7 @@ defmodule Defdo.TailwindBuilder.Core.ArchitectureMatrix do
   considering technical limitations of the underlying compilation toolchain.
   """
 
-  alias Defdo.TailwindBuilder.Core.Capabilities
+  alias Defdo.TailwindBuilder.Core.{Capabilities, Targets}
 
   @doc """
   Get compatibility matrix for all supported versions and architectures
@@ -42,7 +42,10 @@ defmodule Defdo.TailwindBuilder.Core.ArchitectureMatrix do
   def can_compile_for_target?(version, target_architecture)
       when is_binary(version) and is_binary(target_architecture) do
     compatibility = get_version_compatibility(version)
-    target_architecture in compatibility.can_compile_for
+
+    Enum.any?(compatibility.can_compile_for, fn supported_target ->
+      Targets.matches?(target_architecture, supported_target)
+    end)
   end
 
   @doc """
@@ -51,6 +54,17 @@ defmodule Defdo.TailwindBuilder.Core.ArchitectureMatrix do
   def get_available_targets(version) when is_binary(version) do
     compatibility = get_version_compatibility(version)
     compatibility.can_compile_for
+  end
+
+  @doc """
+  Get the canonical target keys that can be compiled from the current host
+  """
+  def get_available_target_keys(version) when is_binary(version) do
+    version
+    |> get_available_targets()
+    |> Enum.map(&Targets.canonical_target_key/1)
+    |> Enum.reject(&is_nil/1)
+    |> Enum.uniq()
   end
 
   @doc """
@@ -80,6 +94,14 @@ defmodule Defdo.TailwindBuilder.Core.ArchitectureMatrix do
   end
 
   @doc """
+  Get the canonical target key for the current host
+  """
+  def get_host_target_key do
+    get_host_architecture()
+    |> Targets.canonical_target_key()
+  end
+
+  @doc """
   Get detailed compilation capabilities for version
   """
   def get_compilation_details(version) when is_binary(version) do
@@ -89,10 +111,12 @@ defmodule Defdo.TailwindBuilder.Core.ArchitectureMatrix do
     %{
       version: version,
       host_architecture: host_arch,
+      host_target_key: get_host_target_key(),
       compilation_method: constraints.compilation_method,
       cross_compilation_available: constraints.cross_compilation,
       supported_targets: constraints.supported_architectures,
       compilable_targets: get_compilable_architectures(constraints),
+      compilable_target_keys: get_available_target_keys(version),
       limitations: get_compilation_limitations(constraints),
       recommended_workflow: get_recommended_workflow(constraints, host_arch)
     }

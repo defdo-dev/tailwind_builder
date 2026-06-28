@@ -24,6 +24,7 @@ defmodule Defdo.TailwindBuilder.Core do
   alias Defdo.TailwindBuilder.Core.Capabilities
   alias Defdo.TailwindBuilder.Core.ArchitectureMatrix
   alias Defdo.TailwindBuilder.Core.TechnicalConstraints
+  alias Defdo.TailwindBuilder.Core.Targets
 
   # Version and capability queries
 
@@ -75,9 +76,19 @@ defmodule Defdo.TailwindBuilder.Core do
   defdelegate get_available_targets(version), to: ArchitectureMatrix
 
   @doc """
+  Get canonical target keys that can be compiled from the current host
+  """
+  defdelegate get_available_target_keys(version), to: ArchitectureMatrix
+
+  @doc """
   Get current host system architecture
   """
   defdelegate get_host_architecture(), to: ArchitectureMatrix
+
+  @doc """
+  Get the canonical target key for the current host
+  """
+  defdelegate get_host_target_key(), to: ArchitectureMatrix
 
   @doc """
   Get detailed compilation capabilities
@@ -88,6 +99,26 @@ defmodule Defdo.TailwindBuilder.Core do
   Get full compatibility matrix for all versions
   """
   defdelegate get_compatibility_matrix(), to: ArchitectureMatrix
+
+  @doc """
+  Normalize a target alias into a canonical target key
+  """
+  defdelegate canonical_target_key(target), to: Targets
+
+  @doc """
+  Resolve the preferred build target for a canonical or legacy target
+  """
+  defdelegate build_target(target), to: Targets
+
+  @doc """
+  Resolve the published artifact filename for a target
+  """
+  defdelegate artifact_name_for_target(target), to: Targets, as: :artifact_name
+
+  @doc """
+  Return true when two target identifiers refer to the same platform
+  """
+  defdelegate targets_match?(left, right), to: Targets, as: :matches?
 
   # Technical feasibility validation
 

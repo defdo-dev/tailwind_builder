@@ -9,6 +9,7 @@ defmodule Defdo.TailwindBuilder.Dependencies do
   - Automatic target installation for WebAssembly compilation
   """
   require Logger
+  alias Defdo.TailwindBuilder.Core
 
   @required_tools ~w(npm pnpm node cargo rustup bun)
   @required_rust_targets ~w(wasm32-wasip1-threads)
@@ -98,10 +99,35 @@ defmodule Defdo.TailwindBuilder.Dependencies do
   Checks if system has all dependencies required for a specific Tailwind version
   """
   def check_version_dependencies!(version) do
-    # First check basic tools
-    check!()
+    # Check only the tools required for this specific version.
+    constraints = Core.get_version_constraints(version)
+    required = Map.get(constraints, :required_tools, @required_tools)
 
-    # Then check version-specific requirements
+    case missing_tools_for(required) do
+      [] ->
+        :ok
+
+      missing ->
+        raise """
+        Missing required build tools for Tailwind #{version}: #{Enum.join(missing, ", ")}
+
+        You can install them manually:
+        - Rust (for cargo):
+          asdf: asdf install rust latest && asdf set rust latest && asdf set --home rust latest
+          manual: curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
+        - Node.js (for npm):
+          Ubuntu: curl -fsSL https://deb.nodesource.com/setup_lts.x | sudo -E bash - && sudo apt-get install -y nodejs
+          macOS: brew install node
+        - pnpm: npm install -g pnpm
+        - Bun:
+          asdf: asdf install bun latest && asdf set bun latest && asdf set --home bun latest
+          brew: brew install bun
+          manual: curl -fsSL https://bun.sh/install | bash
+        Or run: mix tailwind.install_deps
+        """
+    end
+
+    # Then check version-specific Rust targets
     case check_rust_targets_for_version(version) do
       {:ok, _} ->
         :ok
@@ -229,7 +255,7 @@ defmodule Defdo.TailwindBuilder.Dependencies do
   def install_rust_target!(target) do
     Logger.info("Installing Rust target: #{target}")
 
-    case asdf_exec("rustup", ["target", "add", target]) do
+    case System.cmd("rustup", ["target", "add", target]) do
       {out, 0} ->
         Logger.info("Successfully installed Rust target #{target}: #{String.trim(out)}")
         :ok
@@ -238,6 +264,10 @@ defmodule Defdo.TailwindBuilder.Dependencies do
         Logger.error("Failed to install Rust target #{target} (exit #{code}): #{err}")
         {:error, {:target_install_failed, target, code, err}}
     end
+  rescue
+    error ->
+      Logger.error("Failed to install Rust target #{target}: #{Exception.message(error)}")
+      {:error, {:target_install_failed, target, -1, Exception.message(error)}}
   end
 
   def uninstall! do
@@ -322,7 +352,7 @@ defmodule Defdo.TailwindBuilder.Dependencies do
   Gets list of installed Rust targets
   """
   def get_installed_rust_targets do
-    case asdf_exec("rustup", ["target", "list", "--installed"]) do
+    case System.cmd("rustup", ["target", "list", "--installed"]) do
       {output, 0} ->
         output
         |> String.trim()
@@ -334,6 +364,10 @@ defmodule Defdo.TailwindBuilder.Dependencies do
         Logger.warning("Could not retrieve installed Rust targets")
         []
     end
+  rescue
+    _ ->
+      Logger.warning("Could not retrieve installed Rust targets")
+      []
   end
 
   @doc """
@@ -358,6 +392,10 @@ defmodule Defdo.TailwindBuilder.Dependencies do
 
   defp missing_tools do
     Enum.reject(@required_tools, &is_installed?/1)
+  end
+
+  defp missing_tools_for(required) do
+    Enum.reject(required, &is_installed?/1)
   end
 
   defp is_installed?(program) do
