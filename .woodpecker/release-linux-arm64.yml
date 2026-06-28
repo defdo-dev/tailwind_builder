@@ -1,0 +1,62 @@
+---
+# Linux arm64 release pipeline.
+#
+# Runs inside the toolchain container on a native linux/arm64 agent.
+# Smoke test runs the native tailwindcss-linux-arm64 binary.
+#
+# Trigger:
+#   - push to canary/* branches
+#   - manual dispatch
+#
+# Required secrets (same as canary-linux.yml):
+#   r2_access_key_id       — Cloudflare R2 access key
+#   r2_secret_access_key   — Cloudflare R2 secret key
+#   r2_host                — R2 endpoint, e.g. <acct>.r2.cloudflarestorage.com
+#   r2_region              — R2 region (usually "auto")
+#
+# Outputs:
+#   Published artifact: https://storage.defdo.de/tailwind_cli_daisyui_ci_canary/v4.2.2-rc1-linux-arm64-canary/tailwindcss-linux-arm64
+#   Published manifest: https://storage.defdo.de/tailwind_cli_daisyui_ci_canary/v4.2.2-rc1-linux-arm64-canary/manifest.json
+
+labels:
+  platform: linux/arm64
+
+when:
+  - event: push
+    branch:
+      - canary/*
+  - event: manual
+
+steps:
+  - name: test
+    image: hub.defdo.ninja/defdo/tailwind-builder:latest
+    commands:
+      - mix deps.get
+      - mix test
+
+  - name: release-linux-arm64
+    image: hub.defdo.ninja/defdo/tailwind-builder:latest
+    environment:
+      R2_ACCESS_KEY_ID:
+        from_secret: r2_access_key_id
+      R2_SECRET_ACCESS_KEY:
+        from_secret: r2_secret_access_key
+      R2_HOST:
+        from_secret: r2_host
+      R2_REGION:
+        from_secret: r2_region
+    commands:
+      - mix deps.get
+      - >-
+        mix tailwind.release
+        --version 4.2.2
+        --channel v4.2.2-rc1-linux-arm64-canary
+        --config-provider testing
+        --bucket defdo
+        --prefix tailwind_cli_daisyui_ci_canary
+        --storage-base-url https://storage.defdo.de
+        --plugin daisyui_v5
+        --smoke-test
+        --verify-upload
+        --verify-smoke-test
+        --overwrite-policy fail
