@@ -16,6 +16,16 @@ defmodule Defdo.TailwindBuilder.ReleaseTest do
     original_storage_base_url = Application.get_env(:tailwind_builder, :storage_base_url)
     original_storage = Application.get_env(:tailwind_builder, :storage)
 
+    # Fake storage config so run/1's pre-deploy credential check passes for the
+    # r2 happy-path tests (deploy itself is mocked). Error-path tests fail at
+    # plugin/policy validation before this is consulted.
+    Application.put_env(:tailwind_builder, :storage,
+      access_key_id: "test-key",
+      secret_access_key: "test-secret",
+      host: "test.r2.cloudflarestorage.com",
+      region: "auto"
+    )
+
     on_exit(fn ->
       restore_env(:storage_base_url, original_storage_base_url)
       restore_env(:storage, original_storage)

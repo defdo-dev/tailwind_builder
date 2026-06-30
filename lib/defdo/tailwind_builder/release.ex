@@ -103,6 +103,7 @@ defmodule Defdo.TailwindBuilder.Release do
            ),
          {:plugins, {:ok, resolved_plugins, plugin_set}} <-
            {:plugins, resolve_plugins(plugins, config_provider)},
+         :ok <- ensure_storage_config(destination, dry_run),
          {:download, {:ok, download_result}} <-
            {:download, download_source(version, source_path, config_provider)},
          {:apply_plugins, {:ok, plugin_results}} <-
@@ -289,6 +290,40 @@ defmodule Defdo.TailwindBuilder.Release do
 
       _ ->
         %{name: plugin_name, version: version_spec, plugin_key: plugin_name}
+    end
+  end
+
+  # Ensure R2/S3 credentials are loaded into application config before any
+  # upload. The Mix task sets this from env, but library callers (the worker
+  # Executor calling run/1 directly) do not — without this, storage_req builds a
+  # SigV4 signer with a nil access key and uploads fail with a cryptic
+  # ArgumentError. Loads from env as a fallback when not already configured.
+  defp ensure_storage_config(destination, dry_run)
+       when destination in [:r2, :s3] and dry_run == false do
+    case Application.get_env(:tailwind_builder, :storage) do
+      storage when is_list(storage) and storage != [] -> :ok
+      _ -> load_storage_config_from_env()
+    end
+  end
+
+  defp ensure_storage_config(_destination, _dry_run), do: :ok
+
+  defp load_storage_config_from_env do
+    config = %{
+      access_key_id: System.get_env("R2_ACCESS_KEY_ID") || System.get_env("AWS_ACCESS_KEY_ID"),
+      secret_access_key:
+        System.get_env("R2_SECRET_ACCESS_KEY") || System.get_env("AWS_SECRET_ACCESS_KEY"),
+      host: Deployer.normalize_storage_host(System.get_env("R2_HOST")),
+      region: System.get_env("R2_REGION") || System.get_env("AWS_REGION") || "auto"
+    }
+
+    case for({key, value} <- config, is_nil(value), do: key) do
+      [] ->
+        Application.put_env(:tailwind_builder, :storage, Map.to_list(config))
+        :ok
+
+      missing ->
+        {:error, {:missing_storage_config, missing}}
     end
   end
 
