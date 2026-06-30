@@ -921,19 +921,31 @@ defmodule Defdo.TailwindBuilder.Deployer do
   defp default_verification_fetcher(opts) do
     timeout = Keyword.get(opts, :verification_timeout, 30_000)
 
-    fn url ->
-      req = Req.new(receive_timeout: timeout)
+    fn url -> httpc_get(url, timeout) end
+  end
 
-      case Req.get(req, url: url) do
-        {:ok, %Req.Response{status: status, body: body}} when status in 200..299 ->
-          {:ok, body}
+  # Verification downloads use :httpc rather than Req/Finch. Finch/Mint raises
+  # `:ssl.recv/3` (nil timeout) on OTP 28 when streaming large bodies, which
+  # broke `--verify-upload` for the multi-MB Tailwind binary on macOS hosts.
+  # :httpc handles the same download reliably. Transport integrity is not relied
+  # on here: the caller compares the sha256 of the returned bytes against the
+  # local artifact, so a tampered or truncated download fails verification.
+  defp httpc_get(url, timeout) do
+    _ = Application.ensure_all_started(:inets)
+    _ = Application.ensure_all_started(:ssl)
 
-        {:ok, %Req.Response{status: status}} ->
-          {:error, {:unexpected_status, status}}
+    http_opts = [timeout: timeout, connect_timeout: timeout]
+    request = {String.to_charlist(url), []}
 
-        {:error, reason} ->
-          {:error, reason}
-      end
+    case :httpc.request(:get, request, http_opts, body_format: :binary) do
+      {:ok, {{_version, status, _reason}, _headers, body}} when status in 200..299 ->
+        {:ok, body}
+
+      {:ok, {{_version, status, _reason}, _headers, _body}} ->
+        {:error, {:unexpected_status, status}}
+
+      {:error, reason} ->
+        {:error, reason}
     end
   end
 
