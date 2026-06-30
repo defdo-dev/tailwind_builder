@@ -924,12 +924,19 @@ defmodule Defdo.TailwindBuilder.Deployer do
     fn url -> httpc_get(url, timeout) end
   end
 
-  # Verification downloads use :httpc rather than Req/Finch. Finch/Mint raises
-  # `:ssl.recv/3` (nil timeout) on OTP 28 when streaming large bodies, which
-  # broke `--verify-upload` for the multi-MB Tailwind binary on macOS hosts.
-  # :httpc handles the same download reliably. Transport integrity is not relied
-  # on here: the caller compares the sha256 of the returned bytes against the
-  # local artifact, so a tampered or truncated download fails verification.
+  # Verification downloads use :httpc, not Req/Finch.
+  #
+  # Inside the release flow (verify runs after the R2 uploads), Req.get of the
+  # uploaded multi-MB binary raises `:ssl.recv/3` "no function clause" on OTP 28
+  # — deterministically, on every attempt. Reproduced on mint 1.9.0 / finch
+  # 0.23.0; bumping those deps and retrying the request did not help (3/3 raised).
+  # OTP 28's :ssl.recv/3 rejects the `nil` timeout that Mint passes on this path.
+  # :httpc downloads the same artifact reliably in the same context.
+  #
+  # This path only needs to GET public bytes and hash them, so Req's extra
+  # features (redirects, auth, pooling) are not required. Transport integrity is
+  # not relied on either: the caller compares the sha256 of the returned bytes
+  # against the local artifact, so a tampered/truncated body fails verification.
   defp httpc_get(url, timeout) do
     _ = Application.ensure_all_started(:inets)
     _ = Application.ensure_all_started(:ssl)
