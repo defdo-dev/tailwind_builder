@@ -124,9 +124,20 @@ defmodule Defdo.TailwindBuilder.Deployer do
            {:checksums, maybe_generate_sha256sums(deployed, ctx.generate_checksums)},
          {:manifest, {:ok, manifest}} <-
            {:manifest, maybe_generate_manifest(deployed, version, ctx.generate_manifest, opts)},
+         {:merge_metadata, {:ok, {manifest, sha256sums, extra_metadata}}} <-
+           {:merge_metadata,
+            maybe_merge_remote_metadata(mode, version, manifest, sha256sums, opts)},
          {:metadata_uploads, {:ok, metadata_uploads}} <-
            {:metadata_uploads,
-            maybe_publish_metadata(mode, destination, version, manifest, sha256sums, opts)} do
+            maybe_publish_metadata(
+              mode,
+              destination,
+              version,
+              manifest,
+              sha256sums,
+              extra_metadata,
+              opts
+            )} do
       {:ok,
        %{
          version: version,
@@ -243,12 +254,12 @@ defmodule Defdo.TailwindBuilder.Deployer do
   defp maybe_verify_upload_for(:upload, deployed, opts), do: maybe_verify_upload(deployed, opts)
   defp maybe_verify_upload_for(_mode, _deployed, _opts), do: {:ok, nil}
 
-  defp maybe_publish_metadata(:dry_run, _destination, _version, _manifest, _sums, _opts) do
+  defp maybe_publish_metadata(:dry_run, _destination, _version, _manifest, _sums, _extra, _opts) do
     {:ok, []}
   end
 
-  defp maybe_publish_metadata(_mode, destination, version, manifest, sums, opts) do
-    maybe_upload_release_metadata(destination, version, manifest, sums, opts)
+  defp maybe_publish_metadata(_mode, destination, version, manifest, sums, extra, opts) do
+    maybe_upload_release_metadata(destination, version, manifest, sums, extra, opts)
   end
 
   @doc """
@@ -543,6 +554,280 @@ defmodule Defdo.TailwindBuilder.Deployer do
   end
 
   defp maybe_generate_sha256sums(_deployed_files, false), do: {:ok, nil}
+
+  # Merge this run's single-target manifest + checksums with any manifest already
+  # published to the same channel, so multi-arch builds that publish to one
+  # channel accumulate into a single multi-target manifest instead of
+  # overwriting each other.
+  #
+  # New entries win on filename collision; the latest build's top-level
+  # provenance/built_at is kept. `sha256sums.txt` is regenerated from the merged
+  # file list so the manifest and checksums always agree.
+  #
+  # Skipped for dry-run, when disabled via `merge_manifest: false`, or when there
+  # is no manifest to merge.
+  @file_keys ~w(filename artifact_name target_key build_target remote_key storage_url checksum_sha256 size_bytes size_mb built_at architecture status)a
+  @plugin_keys ~w(name version plugin_key)a
+
+  # Returns `{:ok, {manifest, sha256sums, extra_files}}` where `extra_files` is a
+  # list of `{filename, content}` to publish alongside `manifest.json`/
+  # `sha256sums.txt` (used to publish the per-arch fragment).
+  #
+  # Strategy precedence:
+  #   * `compose_targets` set  → fragment + compose (race-free; preferred for CI).
+  #   * `merge_manifest` (default true) → read-modify-write merge of the channel
+  #     `manifest.json` (best-effort; fine for single-writer / serial runs).
+  #   * neither → publish this run's single-target manifest as-is.
+  defp maybe_merge_remote_metadata(:dry_run, _version, manifest, sums, _opts),
+    do: {:ok, {manifest, sums, []}}
+
+  defp maybe_merge_remote_metadata(_mode, _version, nil, sums, _opts), do: {:ok, {nil, sums, []}}
+
+  defp maybe_merge_remote_metadata(_mode, version, manifest, sums, opts) do
+    cond do
+      is_list(Keyword.get(opts, :compose_targets)) ->
+        compose_channel_metadata(version, manifest, sums, opts)
+
+      Keyword.get(opts, :merge_manifest, true) ->
+        with {:ok, {merged, merged_sums}} <- do_merge_remote_metadata(version, manifest, sums, opts) do
+          {:ok, {merged, merged_sums, []}}
+        end
+
+      true ->
+        {:ok, {manifest, sums, []}}
+    end
+  end
+
+  defp do_merge_remote_metadata(version, manifest, sums, opts) do
+    case fetch_remote_manifest(version, opts) do
+      {:ok, remote} ->
+        {merged, merged_sums} = merge_published_manifest(remote, manifest)
+        {:ok, {merged, merged_sums || sums}}
+
+      :none ->
+        {:ok, {manifest, sums}}
+
+      {:error, reason} ->
+        Logger.warning(
+          "Manifest merge skipped: could not fetch remote manifest (#{inspect(reason)}); " <>
+            "publishing this run's manifest as-is"
+        )
+
+        {:ok, {manifest, sums}}
+    end
+  end
+
+  # Race-free channel manifest: publish this run's single-target manifest as an
+  # immutable per-arch fragment (`manifest.d/<target_key>.json`, written only by
+  # this arch), then compose the channel `manifest.json` by folding this run with
+  # the sibling fragments named in `compose_targets`. Because fragments are
+  # single-writer, concurrent composes converge monotonically to the full set,
+  # and any later run deterministically reconstructs the complete manifest from
+  # fragments. Missing siblings (not built yet) are skipped, not an error.
+  defp compose_channel_metadata(version, manifest, sums, opts) do
+    self_target = manifest_target_key(manifest)
+    fragment = {fragment_filename(self_target), Jason.encode!(manifest, pretty: true)}
+
+    siblings =
+      opts
+      |> Keyword.get(:compose_targets, [])
+      |> List.wrap()
+      |> Enum.map(&to_string/1)
+      |> Enum.reject(&(&1 == self_target))
+      |> Enum.flat_map(fn target ->
+        case fetch_fragment(version, target, opts) do
+          {:ok, sibling} ->
+            [sibling]
+
+          :none ->
+            []
+
+          {:error, reason} ->
+            Logger.warning(
+              "Compose skipped sibling fragment #{target}: #{inspect(reason)}"
+            )
+
+            []
+        end
+      end)
+
+    composed = compose_manifest(manifest, siblings)
+    composed_sums = sha256sums_from_manifest(composed) || sums
+    {:ok, {composed, composed_sums, [fragment]}}
+  end
+
+  @doc """
+  Compose a channel manifest by folding this run's manifest with sibling
+  per-arch manifests. This run wins on `filename` collision (it owns its target);
+  siblings contribute their distinct targets. Order-independent for distinct
+  targets. Pure — no network.
+  """
+  @spec compose_manifest(map(), [map()]) :: map()
+  def compose_manifest(base, siblings) when is_map(base) and is_list(siblings) do
+    Enum.reduce(siblings, base, fn sibling, acc -> merge_manifests(sibling, acc) end)
+  end
+
+  defp fragment_filename(target_key), do: "manifest.d/#{target_key || "unknown"}.json"
+
+  defp manifest_target_key(manifest) do
+    manifest
+    |> manifest_files()
+    |> List.first()
+    |> case do
+      nil -> nil
+      file -> fetch_any(file, :target_key) || fetch_any(file, :filename)
+    end
+  end
+
+  defp fetch_fragment(version, target_key, opts) do
+    url = build_storage_url(fragment_remote_key(target_key, opts, version), opts)
+
+    if is_nil(url) do
+      :none
+    else
+      fetcher = Keyword.get(opts, :manifest_merge_fetcher) || (&default_manifest_merge_fetcher/1)
+
+      case fetcher.(url) do
+        {:ok, body} when is_map(body) -> {:ok, body}
+        {:ok, body} when is_binary(body) -> decode_remote_manifest(body)
+        :not_found -> :none
+        {:error, reason} -> {:error, reason}
+      end
+    end
+  end
+
+  defp fragment_remote_key(target_key, opts, version) do
+    artifact_remote_key(fragment_filename(target_key), opts, version)
+  end
+
+  defp fetch_remote_manifest(version, opts) do
+    case remote_manifest_url(version, opts) do
+      nil ->
+        :none
+
+      url ->
+        fetcher = Keyword.get(opts, :manifest_merge_fetcher) || (&default_manifest_merge_fetcher/1)
+
+        case fetcher.(url) do
+          {:ok, body} when is_map(body) -> {:ok, body}
+          {:ok, body} when is_binary(body) -> decode_remote_manifest(body)
+          :not_found -> :none
+          {:error, reason} -> {:error, reason}
+        end
+    end
+  end
+
+  defp decode_remote_manifest(body) do
+    case Jason.decode(body) do
+      {:ok, map} when is_map(map) -> {:ok, map}
+      _ -> {:error, :invalid_remote_manifest}
+    end
+  end
+
+  defp remote_manifest_url(version, opts) do
+    build_storage_url(artifact_remote_key("manifest.json", opts, version), opts)
+  end
+
+  defp default_manifest_merge_fetcher(url) do
+    case Req.get(url: url) do
+      {:ok, %Req.Response{status: 200, body: body}} -> {:ok, body}
+      {:ok, %Req.Response{status: 404}} -> :not_found
+      {:ok, %Req.Response{status: status}} -> {:error, {:http_status, status}}
+      {:error, reason} -> {:error, reason}
+    end
+  rescue
+    error -> {:error, error}
+  end
+
+  @doc """
+  Merge a previously published channel manifest with this run's manifest.
+
+  Returns `{merged_manifest, sha256sums_text}`. Remote file and plugin entries
+  are preserved unless this run publishes the same `filename`/`plugin_key`, in
+  which case the local entry wins. `total_files` is recomputed and
+  `sha256sums_text` is regenerated from the merged file list so the manifest and
+  checksums always agree. Pure — performs no network access. Accepts maps with
+  either atom keys (locally generated) or string keys (decoded remote JSON).
+  """
+  @spec merge_published_manifest(map(), map()) :: {map(), String.t() | nil}
+  def merge_published_manifest(remote, local) when is_map(remote) and is_map(local) do
+    merged = merge_manifests(remote, local)
+    {merged, sha256sums_from_manifest(merged)}
+  end
+
+  defp merge_manifests(remote, local) do
+    remote_files = Enum.map(manifest_files(remote), &normalize_keyed(&1, @file_keys))
+    local_files = Enum.map(manifest_files(local), &normalize_keyed(&1, @file_keys))
+    local_keys = MapSet.new(local_files, &file_key/1)
+
+    merged_files =
+      Enum.reject(remote_files, &MapSet.member?(local_keys, file_key(&1))) ++ local_files
+
+    merged_plugins = merge_plugin_sets(remote, local)
+
+    local
+    |> Map.put(:files, merged_files)
+    |> Map.put(:total_files, length(merged_files))
+    |> Map.put(:plugin_set, merged_plugins)
+    |> put_metadata_plugin_set(merged_plugins)
+  end
+
+  defp merge_plugin_sets(remote, local) do
+    remote_plugins = Enum.map(manifest_plugin_set(remote), &normalize_keyed(&1, @plugin_keys))
+    local_plugins = Enum.map(manifest_plugin_set(local), &normalize_keyed(&1, @plugin_keys))
+    local_keys = MapSet.new(local_plugins, &plugin_key/1)
+
+    Enum.reject(remote_plugins, &MapSet.member?(local_keys, plugin_key(&1))) ++ local_plugins
+  end
+
+  defp put_metadata_plugin_set(%{metadata: %{} = meta} = manifest, plugins),
+    do: Map.put(manifest, :metadata, Map.put(meta, :plugin_set, plugins))
+
+  defp put_metadata_plugin_set(manifest, _plugins), do: manifest
+
+  defp sha256sums_from_manifest(manifest) do
+    lines =
+      manifest
+      |> manifest_files()
+      |> Enum.flat_map(fn file ->
+        name = fetch_any(file, :filename)
+        sum = fetch_any(file, :checksum_sha256)
+        if name && sum, do: ["#{sum}  #{name}"], else: []
+      end)
+      |> Enum.sort()
+
+    case lines do
+      [] -> nil
+      _ -> Enum.join(lines, "\n")
+    end
+  end
+
+  defp manifest_files(manifest), do: fetch_any(manifest, :files) || []
+  defp manifest_plugin_set(manifest), do: fetch_any(manifest, :plugin_set) || []
+
+  defp file_key(file), do: fetch_any(file, :filename) || fetch_any(file, :target_key)
+  defp plugin_key(plugin), do: fetch_any(plugin, :plugin_key) || fetch_any(plugin, :name)
+
+  # JSON fetched from storage has string keys; locally generated maps have atom
+  # keys. Normalize a single entry to atom keys over a fixed, known key set so we
+  # never call String.to_atom on untrusted remote input.
+  defp normalize_keyed(entry, keys) do
+    Enum.reduce(keys, %{}, fn key, acc ->
+      case fetch_any(entry, key) do
+        nil -> acc
+        value -> Map.put(acc, key, value)
+      end
+    end)
+  end
+
+  defp fetch_any(map, atom_key) when is_map(map) do
+    case Map.get(map, atom_key) do
+      nil -> Map.get(map, Atom.to_string(atom_key))
+      value -> value
+    end
+  end
+
+  defp fetch_any(_map, _atom_key), do: nil
 
   defp maybe_verify_upload(deployed, opts) do
     if Keyword.get(opts, :verify_upload, false) do
@@ -875,9 +1160,9 @@ defmodule Defdo.TailwindBuilder.Deployer do
     }
   end
 
-  defp maybe_upload_release_metadata(_destination, _version, nil, nil, _opts), do: {:ok, []}
+  defp maybe_upload_release_metadata(_destination, _version, nil, nil, [], _opts), do: {:ok, []}
 
-  defp maybe_upload_release_metadata(destination, version, manifest, sha256sums, opts)
+  defp maybe_upload_release_metadata(destination, version, manifest, sha256sums, extra, opts)
        when destination in [:r2, :s3] do
     bucket = Keyword.get(opts, :bucket, "defdo")
     prefix = Keyword.get(opts, :prefix, "tailwind_cli_daisyui")
@@ -888,6 +1173,7 @@ defmodule Defdo.TailwindBuilder.Deployer do
         manifest && {"manifest.json", Jason.encode!(manifest, pretty: true)},
         sha256sums && {"sha256sums.txt", ensure_trailing_newline(sha256sums)}
       ]
+      |> Kernel.++(List.wrap(extra))
       |> Enum.reject(&is_nil/1)
       |> Enum.map(fn {filename, content} ->
         upload_content_to_r2(content, filename, bucket, prefix, release_path)
@@ -905,7 +1191,7 @@ defmodule Defdo.TailwindBuilder.Deployer do
     end
   end
 
-  defp maybe_upload_release_metadata(_destination, _version, _manifest, _sha256sums, _opts) do
+  defp maybe_upload_release_metadata(_destination, _version, _manifest, _sha256sums, _extra, _opts) do
     {:ok, []}
   end
 

@@ -51,7 +51,9 @@ defmodule Defdo.TailwindBuilder.Release do
         :overwrite_policy,
         :tailwind_version,
         :tailwind_cli_version,
-        :source_checksum
+        :source_checksum,
+        :merge_manifest,
+        :compose_targets
       ])
 
     version = Keyword.get(opts, :version, @default_version)
@@ -137,7 +139,9 @@ defmodule Defdo.TailwindBuilder.Release do
               overwrite_policy: overwrite_policy,
               tailwind_version: Keyword.get(opts, :tailwind_version, version),
               tailwind_cli_version: Keyword.get(opts, :tailwind_cli_version, version),
-              source_checksum: Keyword.get(opts, :source_checksum)
+              source_checksum: Keyword.get(opts, :source_checksum),
+              merge_manifest: Keyword.get(opts, :merge_manifest, true),
+              compose_targets: Keyword.get(opts, :compose_targets)
             )} do
       {:ok,
        %{

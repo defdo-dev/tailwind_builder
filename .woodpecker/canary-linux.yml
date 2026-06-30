@@ -14,9 +14,15 @@
 #   r2_host                — R2 endpoint, e.g. <acct>.r2.cloudflarestorage.com
 #   r2_region              — R2 region (usually "auto")
 #
-# Outputs:
-#   Published artifact: https://storage.defdo.de/tailwind_cli_daisyui_ci_canary/v4.2.2-rc1-linux-canary/tailwindcss-linux-x64
-#   Published manifest: https://storage.defdo.de/tailwind_cli_daisyui_ci_canary/v4.2.2-rc1-linux-canary/manifest.json
+# Outputs (all canary arches share ONE channel so manifests accumulate):
+#   Published artifact: https://storage.defdo.de/tailwind_cli_daisyui_ci_canary/v4.2.2-rc1/tailwindcss-linux-x64
+#   Published manifest: https://storage.defdo.de/tailwind_cli_daisyui_ci_canary/v4.2.2-rc1/manifest.json
+#
+# Manifest compose (race-free): each arch publishes an immutable per-arch
+# fragment manifest.d/<target>.json (single writer), then composes the channel
+# manifest.json from the fragments named in --compose-targets. Parallel arches
+# never overwrite each other's fragment, so the composed manifest converges to
+# the full target set and any later run deterministically rebuilds it.
 #
 # Limitations:
 #   This pipeline only proves linux-x64 (the agent's native target).
@@ -54,13 +60,14 @@ steps:
       - >-
         mix tailwind.release
         --version 4.2.2
-        --channel v4.2.2-rc1-linux-canary
+        --channel v4.2.2-rc1
         --config-provider testing
         --bucket defdo
         --prefix tailwind_cli_daisyui_ci_canary
         --storage-base-url https://storage.defdo.de
         --plugin daisyui_v5
+        --compose-targets linux-x64,linux-arm64,macos-arm64
         --smoke-test
         --verify-upload
         --verify-smoke-test
-        --overwrite-policy fail
+        --overwrite-policy overwrite

@@ -58,7 +58,9 @@ defmodule Mix.Tasks.Tailwind.Release do
           verify_upload: :boolean,
           verify_smoke_test: :boolean,
           dry_run: :boolean,
-          overwrite_policy: :string
+          overwrite_policy: :string,
+          compose_targets: :string,
+          merge_manifest: :boolean
         ],
         aliases: [
           v: :version,
@@ -115,7 +117,9 @@ defmodule Mix.Tasks.Tailwind.Release do
         verify_upload: Keyword.get(opts, :verify_upload, false),
         verify_smoke_test: Keyword.get(opts, :verify_smoke_test, false),
         dry_run: dry_run,
-        overwrite_policy: parse_overwrite_policy(Keyword.get(opts, :overwrite_policy))
+        overwrite_policy: parse_overwrite_policy(Keyword.get(opts, :overwrite_policy)),
+        merge_manifest: Keyword.get(opts, :merge_manifest, true),
+        compose_targets: parse_compose_targets(Keyword.get(opts, :compose_targets))
       ]
       |> Enum.reject(fn {_key, value} -> is_nil(value) end)
 
@@ -158,6 +162,22 @@ defmodule Mix.Tasks.Tailwind.Release do
     Mix.raise(
       "Unsupported overwrite policy: #{other}. Expected one of: fail, overwrite, promote_only"
     )
+  end
+
+  # Comma-separated target keys, e.g. "linux-x64,linux-arm64,macos-arm64". When
+  # set, the release publishes a per-arch manifest fragment and composes the
+  # channel manifest from these targets' fragments (race-free across arches).
+  defp parse_compose_targets(nil), do: nil
+
+  defp parse_compose_targets(value) when is_binary(value) do
+    value
+    |> String.split(",", trim: true)
+    |> Enum.map(&String.trim/1)
+    |> Enum.reject(&(&1 == ""))
+    |> case do
+      [] -> nil
+      targets -> targets
+    end
   end
 
   defp parse_config_provider(nil), do: ProductionConfigProvider

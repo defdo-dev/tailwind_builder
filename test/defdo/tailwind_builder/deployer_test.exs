@@ -604,4 +604,144 @@ defmodule Defdo.TailwindBuilder.DeployerTest do
       assert res.smoke_test == :failed
     end
   end
+
+  describe "merge_published_manifest/2" do
+    # Remote (already published) manifest: only the macOS target, string keys as
+    # decoded from storage JSON.
+    defp remote_macos_manifest do
+      %{
+        "manifest_schema_version" => 1,
+        "release_channel" => "v4.2.2-rc1",
+        "tailwind_cli_version" => "4.2.2",
+        "total_files" => 1,
+        "plugin_set" => [%{"name" => "daisyui", "version" => "5.5.19", "plugin_key" => "daisyui_v5"}],
+        "files" => [
+          %{
+            "filename" => "tailwindcss-macos-arm64",
+            "target_key" => "macos-arm64",
+            "build_target" => "aarch64-apple-darwin",
+            "artifact_name" => "tailwindcss-macos-arm64",
+            "storage_url" => "https://storage.defdo.de/p/v4.2.2-rc1/tailwindcss-macos-arm64",
+            "checksum_sha256" => "macsum",
+            "size_bytes" => 77_827_552,
+            "built_at" => "2026-06-28T00:19:04Z"
+          }
+        ]
+      }
+    end
+
+    # Local (this run) manifest: only the linux-x64 target, atom keys as produced
+    # by generate_deployment_manifest/3.
+    defp local_linux_manifest do
+      %{
+        manifest_schema_version: 1,
+        release_channel: "v4.2.2-rc1",
+        tailwind_cli_version: "4.2.2",
+        total_files: 1,
+        metadata: %{plugin_set: [%{name: "daisyui", version: "5.5.19", plugin_key: "daisyui_v5"}]},
+        plugin_set: [%{name: "daisyui", version: "5.5.19", plugin_key: "daisyui_v5"}],
+        files: [
+          %{
+            filename: "tailwindcss-linux-x64",
+            target_key: "linux-x64",
+            build_target: "x86_64-unknown-linux-gnu",
+            artifact_name: "tailwindcss-linux-x64",
+            storage_url: "https://storage.defdo.de/p/v4.2.2-rc1/tailwindcss-linux-x64",
+            checksum_sha256: "linsum",
+            size_bytes: 1234,
+            built_at: "2026-06-30T00:00:00Z"
+          }
+        ]
+      }
+    end
+
+    test "accumulates a new target into a previously published manifest" do
+      {merged, sums} = Deployer.merge_published_manifest(remote_macos_manifest(), local_linux_manifest())
+
+      target_keys = merged.files |> Enum.map(&(&1[:target_key])) |> Enum.sort()
+      assert target_keys == ["linux-x64", "macos-arm64"]
+      assert merged.total_files == 2
+      # Plugin set de-duplicated by plugin_key, not doubled.
+      assert length(merged.plugin_set) == 1
+
+      # sha256sums regenerated from the merged file list, sorted, both targets.
+      assert sums == "linsum  tailwindcss-linux-x64\nmacsum  tailwindcss-macos-arm64"
+    end
+
+    test "local entry wins on filename collision (re-publishing same target)" do
+      remote = remote_macos_manifest()
+
+      local =
+        local_linux_manifest()
+        |> Map.put(:files, [
+          %{
+            filename: "tailwindcss-macos-arm64",
+            target_key: "macos-arm64",
+            artifact_name: "tailwindcss-macos-arm64",
+            storage_url: "https://storage.defdo.de/p/v4.2.2-rc1/tailwindcss-macos-arm64",
+            checksum_sha256: "newmacsum",
+            size_bytes: 999,
+            built_at: "2026-06-30T00:00:00Z"
+          }
+        ])
+
+      {merged, sums} = Deployer.merge_published_manifest(remote, local)
+
+      assert merged.total_files == 1
+      [file] = merged.files
+      assert file[:checksum_sha256] == "newmacsum"
+      assert sums == "newmacsum  tailwindcss-macos-arm64"
+    end
+  end
+
+  describe "compose_manifest/2" do
+    defp sibling_manifest(filename, target_key, checksum) do
+      %{
+        "manifest_schema_version" => 1,
+        "files" => [
+          %{
+            "filename" => filename,
+            "target_key" => target_key,
+            "artifact_name" => filename,
+            "storage_url" => "https://storage.defdo.de/p/v4.2.2-rc1/#{filename}",
+            "checksum_sha256" => checksum,
+            "size_bytes" => 100,
+            "built_at" => "2026-06-30T00:00:00Z"
+          }
+        ]
+      }
+    end
+
+    test "folds this run with sibling fragments into one multi-target manifest" do
+      base = local_linux_manifest()
+
+      siblings = [
+        sibling_manifest("tailwindcss-macos-arm64", "macos-arm64", "macsum"),
+        sibling_manifest("tailwindcss-linux-arm64", "linux-arm64", "armsum")
+      ]
+
+      composed = Deployer.compose_manifest(base, siblings)
+
+      target_keys = composed.files |> Enum.map(&(&1[:target_key])) |> Enum.sort()
+      assert target_keys == ["linux-arm64", "linux-x64", "macos-arm64"]
+      assert composed.total_files == 3
+    end
+
+    test "fold is order-independent for distinct targets" do
+      base = local_linux_manifest()
+      mac = sibling_manifest("tailwindcss-macos-arm64", "macos-arm64", "macsum")
+      arm = sibling_manifest("tailwindcss-linux-arm64", "linux-arm64", "armsum")
+
+      keys = fn m -> m.files |> Enum.map(&(&1[:target_key])) |> Enum.sort() end
+
+      assert keys.(Deployer.compose_manifest(base, [mac, arm])) ==
+               keys.(Deployer.compose_manifest(base, [arm, mac]))
+    end
+
+    test "no siblings (others not built yet) yields just this run's target" do
+      composed = Deployer.compose_manifest(local_linux_manifest(), [])
+      assert composed.total_files == 1
+      assert [%{target_key: "linux-x64"}] = composed.files
+    end
+  end
 end
