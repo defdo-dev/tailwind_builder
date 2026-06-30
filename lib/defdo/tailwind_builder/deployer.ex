@@ -64,7 +64,10 @@ defmodule Defdo.TailwindBuilder.Deployer do
         :existence_checker,
         :tailwind_version,
         :tailwind_cli_version,
-        :source_checksum
+        :source_checksum,
+        :merge_manifest,
+        :compose_targets,
+        :manifest_merge_fetcher
       ])
 
     version = opts[:version] || raise ArgumentError, "version is required"

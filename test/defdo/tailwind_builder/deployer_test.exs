@@ -534,6 +534,29 @@ defmodule Defdo.TailwindBuilder.DeployerTest do
                "https://storage.defdo.de/tailwind_cli_daisyui/v4.2.2-rc1/#{artifact}"
     end
 
+    test "accepts merge_manifest and compose_targets opts (regression)", %{dir: dir} do
+      # These opts are threaded from the release task; deploy/1 must whitelist
+      # them. Dry-run skips the compose/merge network step, so this only proves
+      # the option validation does not raise.
+      assert {:ok, result} =
+               Deployer.deploy(
+                 version: "4.2.2",
+                 source_path: dir,
+                 destination: :r2,
+                 dry_run: true,
+                 validate_binaries: false,
+                 smoke_test_binaries: false,
+                 bucket: "defdo",
+                 prefix: "tailwind_cli_daisyui_ci_canary",
+                 release_channel: "v4.2.2-rc1",
+                 storage_base_url: "https://storage.defdo.de",
+                 merge_manifest: true,
+                 compose_targets: ["linux-x64", "linux-arm64", "macos-arm64"]
+               )
+
+      assert result.dry_run == true
+    end
+
     test "is deterministic across reruns", %{dir: dir} do
       assert {:ok, run1} = dry_run_deploy(dir)
       assert {:ok, run2} = dry_run_deploy(dir)
