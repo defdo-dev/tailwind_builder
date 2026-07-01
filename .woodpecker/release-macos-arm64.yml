@@ -1,0 +1,64 @@
+---
+# macOS arm64 release pipeline (native, Woodpecker local backend).
+#
+# Runs on the native darwin/arm64 exec agent (mac-mini-builder, 10.0.10.145) —
+# no Linux container. macOS binaries cannot be produced in a container (Docker
+# on macOS is a Linux VM), so this is the only path for tailwindcss-macos-arm64.
+#
+# Local backend specifics:
+#   - `image:` names the SHELL used to run `commands` (bash), NOT a container.
+#   - The agent host must have the toolchain in PATH (Elixir/OTP, Node, pnpm,
+#     Rust + wasm32-wasip1-threads, Bun) and the `plugin-git` binary for cloning.
+#     Provision with tailwind_builder_worker/scripts/provision-host.sh.
+#
+# Trigger: push to canary/* branches, or manual dispatch.
+#
+# Required secrets (same as canary-linux.yml): r2_access_key_id,
+#   r2_secret_access_key, r2_host, r2_region.
+#
+# Output (shared canary channel, merges with the linux arches):
+#   https://storage.defdo.de/tailwind_cli_daisyui_ci_canary/v4.2.2-rc1/tailwindcss-macos-arm64
+
+labels:
+  platform: darwin/arm64
+
+when:
+  - event: push
+    branch:
+      - canary/*
+  - event: manual
+
+steps:
+  - name: test
+    image: bash
+    commands:
+      - mix deps.get
+      - mix test
+
+  - name: release-macos-arm64
+    image: bash
+    environment:
+      R2_ACCESS_KEY_ID:
+        from_secret: r2_access_key_id
+      R2_SECRET_ACCESS_KEY:
+        from_secret: r2_secret_access_key
+      R2_HOST:
+        from_secret: r2_host
+      R2_REGION:
+        from_secret: r2_region
+    commands:
+      - mix deps.get
+      - >-
+        mix tailwind.release
+        --version 4.2.2
+        --channel v4.2.2-rc1
+        --config-provider testing
+        --bucket defdo
+        --prefix tailwind_cli_daisyui_ci_canary
+        --storage-base-url https://storage.defdo.de
+        --plugin daisyui_v5
+        --compose-targets linux-x64,linux-arm64,macos-arm64
+        --smoke-test
+        --verify-upload
+        --verify-smoke-test
+        --overwrite-policy overwrite
