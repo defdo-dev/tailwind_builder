@@ -544,8 +544,13 @@ defmodule Defdo.TailwindBuilder.Builder do
 
     ensure_turbo_env_passthrough(paths.tailwind_root)
 
-    # Build pnpm commands following official GitHub Actions workflow
-    install_step = {"pnpm install", "pnpm", ["install"], paths.tailwind_root}
+    # Build pnpm commands following official GitHub Actions workflow.
+    # --no-frozen-lockfile: injecting the plugin (e.g. daisyui) rewrites
+    # package.json, so the source's shipped pnpm-lock.yaml no longer matches.
+    # pnpm auto-enables --frozen-lockfile under CI=true and would abort with
+    # ERR_PNPM_OUTDATED_LOCKFILE; allow it to resolve the injected dependency.
+    install_step =
+      {"pnpm install", "pnpm", ["install", "--no-frozen-lockfile"], paths.tailwind_root}
 
     # Build the oxide crate (native compilation only)
     oxide_build_step =
