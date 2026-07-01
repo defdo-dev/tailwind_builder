@@ -6,7 +6,8 @@
 # Pinned tool versions match .tool-versions in the project root.
 # Build args allow version overrides without editing this file.
 
-FROM elixir:1.18
+# elixir >= 1.19 required by the worker that builds FROM this base image.
+FROM elixir:1.19
 
 ARG NODE_VERSION=22.6.0
 ARG RUST_VERSION=1.90.0
@@ -34,9 +35,10 @@ RUN ARCH=$(uname -m | sed 's/x86_64/x64/;s/aarch64/arm64/') && \
 # pnpm — installed via npm with pinned version
 RUN npm install -g "pnpm@${PNPM_VERSION}"
 
-# Rust — rustup, pinned toolchain, PATH set via ENV above
+# Rust — rustup, pinned toolchain, minimal profile (no rust-docs/clippy/rustfmt)
+# to keep the image lean; PATH set via ENV above.
 RUN curl -fsSL https://sh.rustup.rs | \
-    sh -s -- -y --default-toolchain "${RUST_VERSION}" --no-modify-path
+    sh -s -- -y --profile minimal --default-toolchain "${RUST_VERSION}" --no-modify-path
 
 # Rust wasm32 target required by the Tailwind v4 standalone build
 RUN rustup target add wasm32-wasip1-threads
