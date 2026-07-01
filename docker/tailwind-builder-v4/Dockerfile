@@ -20,12 +20,18 @@ ARG PNPM_VERSION=9.15.9
 ENV LANG=C.UTF-8
 ENV PATH="/root/.cargo/bin:/root/.bun/bin:${PATH}"
 
-# System packages: compiler toolchain, curl, git, archive tools
+# System packages: compiler toolchain, curl, git, archive tools.
+# python3: node-gyp needs it to build native npm modules from source. On arm64,
+# some Tailwind dev deps (tree-sitter-*) have no prebuilt binary and compile via
+# node-gyp during `pnpm install` — without python3 that fails with
+# "Could not find any Python installation to use" and the whole install exits 1.
+# amd64 uses prebuilts so it doesn't hit this, but python3 is harmless there.
 RUN apt-get update && apt-get install -y --no-install-recommends \
     build-essential \
     ca-certificates \
     curl \
     git \
+    python3 \
     unzip \
     xz-utils \
     && rm -rf /var/lib/apt/lists/*
