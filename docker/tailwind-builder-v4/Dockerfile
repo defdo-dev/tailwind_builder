@@ -7,7 +7,10 @@
 # Build args allow version overrides without editing this file.
 
 # elixir >= 1.19 required by the worker that builds FROM this base image.
-FROM elixir:1.19
+# -slim (Debian slim, glibc) instead of the full image: ~2GB smaller, still
+# glibc so the native oxide build produces glibc (gnu) binaries — NOT musl, which
+# an Alpine base would force and would mismatch our linux-x64/arm64 (gnu) targets.
+FROM elixir:1.19-slim
 
 ARG NODE_VERSION=22.6.0
 ARG RUST_VERSION=1.90.0
@@ -40,7 +43,8 @@ RUN npm install -g "pnpm@${PNPM_VERSION}"
 RUN curl -fsSL https://sh.rustup.rs | \
     sh -s -- -y --profile minimal --default-toolchain "${RUST_VERSION}" --no-modify-path
 
-# Rust wasm32 target required by the Tailwind v4 standalone build
+# wasm32 target: the workspace build runs the oxide crate's `build:wasm`
+# (napi build --target wasm32-wasip1-threads), so this target is required.
 RUN rustup target add wasm32-wasip1-threads
 
 # Bun — GitHub release, version-pinned, arch-detected

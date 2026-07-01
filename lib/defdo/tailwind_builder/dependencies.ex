@@ -12,6 +12,11 @@ defmodule Defdo.TailwindBuilder.Dependencies do
   alias Defdo.TailwindBuilder.Core
 
   @required_tools ~w(npm pnpm node cargo rustup bun)
+  # wasm32-wasip1-threads IS required: the workspace build (`pnpm run build`)
+  # runs the oxide crate's full `build` = `build:platform && build:wasm`, and
+  # build:wasm compiles for wasm32-wasip1-threads. (Upstream's release workflow
+  # sidesteps this by building oxide per-target with build:platform only, but the
+  # tailwind_builder flow runs the workspace build, which needs the wasm target.)
   @required_rust_targets ~w(wasm32-wasip1-threads)
   @tailwind_v4_requirements %{
     "4.0.0" => ["wasm32-wasip1-threads"],
