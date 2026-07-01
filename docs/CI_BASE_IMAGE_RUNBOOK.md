@@ -24,15 +24,31 @@ painful to discover so we don't re-derive them from chat history.
 
 ## Images
 
-| Image | Repo / Dockerfile | Contents | Size |
+| Image | Repo:tag / Dockerfile | Contents | Size |
 | --- | --- | --- | --- |
-| Base | `hub.defdo.ninja/defdo/tailwind-builder` — `tailwind_builder/docker/tailwind-builder-v4/Dockerfile` | Elixir/OTP, Node, pnpm, Rust+wasm32, Bun | ~2.45GB (built rarely) |
-| Worker | `hub.defdo.ninja/defdo/tailwind-builder-worker` — `tailwind_builder_worker/docker/Dockerfile` | `FROM` base + compiled app | base + ~20MB |
+| Base | `hub.defdo.ninja/defdo/tailwind-builder:latest` — `tailwind_builder/docker/tailwind-builder-v4/Dockerfile` | Elixir/OTP, Node, pnpm, Rust+wasm32, Bun | ~2.45GB (built rarely) |
+| Worker | `hub.defdo.ninja/defdo/tailwind-builder:worker-<ver>` — `tailwind_builder_worker/docker/Dockerfile` | `FROM` base + compiled app | base + ~9MB |
 
-The worker layer is tiny because the toolchain lives in the base. When only
-worker code changes, only the ~20MB delta is pushed (base layers are shared and
-already in the registry) — that delta is under the CF limit, so the worker
-pushes through CF normally. Only the **base** needs the internal-push path.
+The worker layer is tiny (~9MB — `mix deps.get && mix compile` on top of the
+base). **Critical:** the worker image is published to the base's OWN repo with a
+`worker-<ver>` tag, NOT a separate `tailwind-builder-worker` repo. This is what
+lets it push through Cloudflare:
+
+- Cloudflare caps request bodies at ~100MB. The base's individual layers (rust
+  ~614MB, node ~196MB) each exceed that.
+- In a **separate** repo those base layers don't exist yet, so buildkit tries to
+  re-upload them (cross-repo mount from the base repo isn't granted through CF)
+  → **413 Payload Too Large** on the big layers. This is a hard blocker; there is
+  no small-delta shortcut when the repo differs.
+- In the **base's own repo** the layers already exist, so buildkit's HEAD-blob
+  check finds them present and skips them — only the ~9MB worker delta uploads,
+  which clears CF. No internal-push path is needed for the worker.
+
+Two things must both hold for the skip to work: (1) same repo as the base, and
+(2) the CI build must NOT rewrite layer timestamps (see the pipeline note on
+`output: type=image,push=true`, which disables the buildx plugin's default
+`rewrite-timestamp=true`). Rewriting re-hashes every layer including the base,
+so the digests no longer match what's in the repo and the skip is defeated.
 
 ## Registry facts (Harbor + Cloudflare)
 
@@ -81,9 +97,17 @@ Then a push to `hub.defdo.ninja/defdo/...` goes **direct to Harbor** (no CF, no
 
 | Target | Node | How |
 | --- | --- | --- |
-| linux/amd64 | `n150` — `ubuntu@192.168.13.202` (cluster node, has Docker) | `docker build` + `docker push` (insecure-registries) |
-| linux/arm64 | `cloudy-b1` (in-cluster, 8 vCPU/16Gi) | in-cluster BuildKit Deployment, **native** (no QEMU) |
+| linux/amd64 (base, manual) | `n150` — `ubuntu@192.168.13.202` (cluster node, has Docker) | `docker build` + `docker push` (insecure-registries, internal) |
+| linux/amd64 (CI) | in-cluster BuildKit on `n150` | `deploy/buildkit-amd64.yaml`, **native** (no QEMU) |
+| linux/arm64 (CI + base) | `cloudy-b1` (in-cluster, 8 vCPU/16Gi) | `deploy/buildkit-arm64.yaml`, **native** (no QEMU) |
 | darwin/arm64 | mac mini — `defdo@10.0.10.145` | **native worker daemon**, no image |
+
+There are two amd64 push paths on purpose: the **base** is pushed manually via
+the n150 Docker daemon over the internal ClusterIP (its layers exceed CF), while
+**CI** worker builds use an in-cluster amd64 buildkitd and push through CF (only
+the ~9MB delta — see the worker note above). Both buildkit daemons live in
+`defdo-ci` and are wired to the Woodpecker secrets `buildkit_host_amd64` /
+`buildkit_host_arm64`.
 
 `radxa` (`ubuntu@10.13.13.13`, arm64, has Docker) is **outside** the cluster and
 cannot reach the Harbor ClusterIP, so it is not used for pushing.
@@ -175,3 +199,17 @@ Credentials come from `load_hub_defdo` (`DEFDO_DOCKER_USERNAME` /
 | `x509: certificate signed by unknown authority` | Harbor's self-signed CA not trusted | mount `harbor-ca` and reference it in `buildkitd.toml` / trust it on the host |
 | arm64 build is extremely slow | QEMU emulation | build natively on `cloudy-b1` BuildKit instead |
 | `can't find crate for core/std` | wasm32 target missing | keep `rustup target add wasm32-wasip1-threads` in the base |
+| worker CI push `413 Payload Too Large` (Cloudflare) | worker pushed to a separate repo → base layers re-uploaded; or `rewrite-timestamp=true` re-hashed the base layers | push the worker into the base repo as `worker-<ver>` **and** set `output: type=image,push=true` (no timestamp rewrite) so base layers are skipped |
+| CI `publish-manifest` step: `waiting to start ... failing to pull image` | Woodpecker k8s backend couldn't pull the `plugin-docker-manifest` image (registry rate-limit/flake) | re-run the pipeline, or assemble the manifest manually with `docker buildx imagetools create` on n150 (see below) |
+
+### Assemble the worker multi-arch manifest manually (if the CI step flakes)
+
+```bash
+ssh ubuntu@192.168.13.202
+  for tag in worker-<ver> worker-latest; do
+    docker buildx imagetools create -t hub.defdo.ninja/defdo/tailwind-builder:$tag \
+      hub.defdo.ninja/defdo/tailwind-builder:worker-<ver>-amd64 \
+      hub.defdo.ninja/defdo/tailwind-builder:worker-<ver>-arm64
+  done
+```
+(Needs Harbor's CA in n150's system trust — same as the base multi-arch step.)
