@@ -35,8 +35,8 @@ RUN ARCH=$(uname -m | sed 's/x86_64/x64/;s/aarch64/arm64/') && \
     curl -fsSL "https://nodejs.org/dist/v${NODE_VERSION}/node-v${NODE_VERSION}-linux-${ARCH}.tar.xz" \
     | tar -xJ -C /usr/local --strip-components=1
 
-# pnpm — installed via npm with pinned version
-RUN npm install -g "pnpm@${PNPM_VERSION}"
+# pnpm — installed via npm with pinned version (drop npm cache after)
+RUN npm install -g "pnpm@${PNPM_VERSION}" && npm cache clean --force
 
 # Rust — rustup, pinned toolchain, minimal profile (no rust-docs/clippy/rustfmt)
 # to keep the image lean; PATH set via ENV above.
