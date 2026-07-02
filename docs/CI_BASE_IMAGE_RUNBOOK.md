@@ -135,6 +135,30 @@ kubectl -n defdo-ci exec deploy/buildkit-arm64 -- buildctl debug workers   # lin
 kubectl -n defdo-ci exec deploy/buildkit-arm64 -- getent hosts hub.defdo.ninja  # 10.43.231.228
 ```
 
+## Tailwind version bumps require toolchain bumps
+
+A new Tailwind release can move its whole build toolchain, and the base must
+match or the standalone build silently produces a binary that **builds but won't
+run** (the smoke test catches it). Concrete example — 4.2.2 → 4.3.2:
+
+| Tool | 4.2.2 | 4.3.2 | Where pinned |
+| --- | --- | --- | --- |
+| node | 22.6.0 | **>= 22.13** | implied by pnpm 11 |
+| pnpm | 9.6.0 | **11.9.0** | root `package.json` `packageManager` |
+| rust | (base default) | **1.95.0** | `rust-toolchain.toml` |
+| bun | ^1.3.9 | ^1.3.14 | `@tailwindcss-standalone` dep |
+
+The subtle one: Tailwind **patches `lightningcss` via a pnpm patch**. In 4.2.2 the
+patch lives in `package.json` `patchedDependencies` (pnpm 9 applies it); in 4.3.2
+it moved to `pnpm-workspace.yaml` (pnpm 10+ format). With the wrong pnpm the patch
+is **not applied**, lightningcss's native loader stays unpatched, and `bun build
+--compile` fails to embed `lightningcss.<target>.node` → the binary dies at
+runtime with `Cannot find module '../lightningcss.<target>.node'`. That's why the
+base uses **corepack** for pnpm (each source's `packageManager` wins) instead of a
+single global pnpm. rust is pinned per-source via `rust-toolchain.toml`, so the
+base ships `RUST_VERSION` with `wasm32-wasip1-threads` added for it; if a future
+release pins a different rust channel, add the wasm32 target for that channel too.
+
 ## Rebuild the base (after an Elixir/Rust/Node/Bun bump)
 
 Sources of truth for versions:

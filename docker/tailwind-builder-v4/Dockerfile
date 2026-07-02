@@ -12,10 +12,16 @@
 # an Alpine base would force and would mismatch our linux-x64/arm64 (gnu) targets.
 FROM elixir:1.19-slim
 
-ARG NODE_VERSION=22.6.0
-ARG RUST_VERSION=1.90.0
-ARG BUN_VERSION=1.2.23
-ARG PNPM_VERSION=9.15.9
+# Versions track what recent Tailwind releases require. Tailwind 4.3.x bumped
+# its whole toolchain vs 4.2.x: node >=22.13 (pnpm 11 needs it), pnpm 11.9.0
+# (packageManager field; applies the lightningcss pnpm-patch that lets the bun
+# standalone embed lightningcss's native .node), rust 1.95.0 (rust-toolchain.toml),
+# bun 1.3.14. pnpm is provided via corepack so each Tailwind version's pinned
+# packageManager is used automatically (9.6.0 for 4.2.2, 11.9.0 for 4.3.2).
+ARG NODE_VERSION=22.20.0
+ARG RUST_VERSION=1.95.0
+ARG BUN_VERSION=1.3.14
+ARG PNPM_VERSION=11.9.0
 
 ENV LANG=C.UTF-8
 ENV PATH="/root/.cargo/bin:/root/.bun/bin:${PATH}"
@@ -41,8 +47,11 @@ RUN ARCH=$(uname -m | sed 's/x86_64/x64/;s/aarch64/arm64/') && \
     curl -fsSL "https://nodejs.org/dist/v${NODE_VERSION}/node-v${NODE_VERSION}-linux-${ARCH}.tar.xz" \
     | tar -xJ -C /usr/local --strip-components=1
 
-# pnpm — installed via npm with pinned version (drop npm cache after)
-RUN npm install -g "pnpm@${PNPM_VERSION}" && npm cache clean --force
+# pnpm — via corepack so the version follows each source's `packageManager`
+# field (Tailwind 4.2.2 -> pnpm 9.6.0, 4.3.2 -> pnpm 11.9.0). corepack ships with
+# Node. Activate a sane default; the source's packageManager overrides it, and
+# the lightningcss pnpm-patch only applies with the version the source pins.
+RUN corepack enable && corepack prepare "pnpm@${PNPM_VERSION}" --activate && npm cache clean --force
 
 # Rust — rustup, pinned toolchain, minimal profile (no rust-docs/clippy/rustfmt)
 # to keep the image lean; PATH set via ENV above.
