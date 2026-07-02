@@ -308,6 +308,10 @@ defmodule Defdo.TailwindBuilder.ConfigProvidersTest do
 
     test "all providers implement required behavior functions" do
       for provider <- @providers do
+        # Ensure the module is loaded first: function_exported?/3 returns false
+        # for a module whose code hasn't been loaded yet, which made this test
+        # flaky across runs/arches depending on load order.
+        assert Code.ensure_loaded?(provider)
         # Required functions from ConfigProvider behavior
         assert function_exported?(provider, :get_supported_plugins, 0)
         assert function_exported?(provider, :get_known_checksums, 0)
