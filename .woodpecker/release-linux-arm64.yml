@@ -15,8 +15,8 @@
 #   r2_region              — R2 region (usually "auto")
 #
 # Outputs (shared canary channel — merges with the other arches):
-#   Published artifact: https://storage.defdo.de/tailwind_cli_daisyui_ci_canary/v4.2.2-rc1/tailwindcss-linux-arm64
-#   Published manifest: https://storage.defdo.de/tailwind_cli_daisyui_ci_canary/v4.2.2-rc1/manifest.json
+#   Published artifact: https://storage.defdo.de/tailwind_cli_daisyui_ci_canary/v4.3.2-rc1/tailwindcss-linux-arm64
+#   Published manifest: https://storage.defdo.de/tailwind_cli_daisyui_ci_canary/v4.3.2-rc1/manifest.json
 
 labels:
   platform: linux/arm64
@@ -49,8 +49,8 @@ steps:
       - mix deps.get
       - >-
         mix tailwind.release
-        --version 4.2.2
-        --channel v4.2.2-rc1
+        --version 4.3.2
+        --channel v4.3.2-rc1
         --config-provider testing
         --bucket defdo
         --prefix tailwind_cli_daisyui_ci_canary

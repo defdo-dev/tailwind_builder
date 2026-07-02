@@ -17,7 +17,7 @@
 #   r2_secret_access_key, r2_host, r2_region.
 #
 # Output (shared canary channel, merges with the linux arches):
-#   https://storage.defdo.de/tailwind_cli_daisyui_ci_canary/v4.2.2-rc1/tailwindcss-macos-arm64
+#   https://storage.defdo.de/tailwind_cli_daisyui_ci_canary/v4.3.2-rc1/tailwindcss-macos-arm64
 
 labels:
   platform: darwin/arm64
@@ -50,8 +50,8 @@ steps:
       - mix deps.get
       - >-
         mix tailwind.release
-        --version 4.2.2
-        --channel v4.2.2-rc1
+        --version 4.3.2
+        --channel v4.3.2-rc1
         --config-provider testing
         --bucket defdo
         --prefix tailwind_cli_daisyui_ci_canary

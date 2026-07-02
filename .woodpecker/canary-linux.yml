@@ -1,7 +1,7 @@
 ---
 # Canary Linux release pipeline.
 #
-# Runs the v4.2.2-rc1 Tailwind + DaisyUI release flow inside the toolchain
+# Runs the v4.3.2-rc1 Tailwind + DaisyUI release flow inside the toolchain
 # container image, targeting the linux-x64 canary prefix on R2.
 #
 # Trigger:
@@ -15,8 +15,8 @@
 #   r2_region              — R2 region (usually "auto")
 #
 # Outputs (all canary arches share ONE channel so manifests accumulate):
-#   Published artifact: https://storage.defdo.de/tailwind_cli_daisyui_ci_canary/v4.2.2-rc1/tailwindcss-linux-x64
-#   Published manifest: https://storage.defdo.de/tailwind_cli_daisyui_ci_canary/v4.2.2-rc1/manifest.json
+#   Published artifact: https://storage.defdo.de/tailwind_cli_daisyui_ci_canary/v4.3.2-rc1/tailwindcss-linux-x64
+#   Published manifest: https://storage.defdo.de/tailwind_cli_daisyui_ci_canary/v4.3.2-rc1/manifest.json
 #
 # Manifest compose (race-free): each arch publishes an immutable per-arch
 # fragment manifest.d/<target>.json (single writer), then composes the channel
@@ -59,8 +59,8 @@ steps:
       - mix deps.get
       - >-
         mix tailwind.release
-        --version 4.2.2
-        --channel v4.2.2-rc1
+        --version 4.3.2
+        --channel v4.3.2-rc1
         --config-provider testing
         --bucket defdo
         --prefix tailwind_cli_daisyui_ci_canary
