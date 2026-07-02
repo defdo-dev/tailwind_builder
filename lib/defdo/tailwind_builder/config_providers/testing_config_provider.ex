@@ -22,7 +22,7 @@ defmodule Defdo.TailwindBuilder.ConfigProviders.TestingConfigProvider do
       "compatible_versions" => ["3.x", "4.x"]
     },
     "daisyui_v5" => %{
-      "version" => ~s["daisyui": "5.5.19"],
+      "version" => ~s["daisyui": "5.6.7"],
       "description" => "Test plugin for Tailwind CSS v5",
       "npm_name" => "daisyui",
       "compatible_versions" => ["4.x"]
@@ -236,7 +236,7 @@ defmodule Defdo.TailwindBuilder.ConfigProviders.TestingConfigProvider do
       fixture_data: %{
         tailwind_versions: ["3.4.17", "4.0.9", "4.1.11"],
         plugin_versions: %{
-          "daisyui" => ["4.12.23", "5.5.19"],
+          "daisyui" => ["4.12.23", "5.5.19", "5.6.7"],
           "test-plugin" => ["1.0.0", "2.0.0"]
         }
       }

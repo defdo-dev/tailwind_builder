@@ -12,7 +12,7 @@ defmodule Defdo.TailwindBuilder.RemoteBuilder do
       {:ok, result} = RemoteBuilder.build_remote([
         version: "4.1.14",
         target_arch: "linux-x64",
-        plugins: [%{name: "daisyui", version: "5.5.19"}],
+        plugins: [%{name: "daisyui", version: "5.6.7"}],
         source_path: "/tmp/tailwind-source"
       ])
 

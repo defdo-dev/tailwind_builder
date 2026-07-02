@@ -18,7 +18,7 @@ defmodule Defdo.TailwindBuilder.DefaultConfigProvider do
       "compatible_versions" => ["3.x"]
     },
     "daisyui_v5" => %{
-      "version" => ~s["daisyui": "5.5.19"],
+      "version" => ~s["daisyui": "5.6.7"],
       "description" => "Semantic component classes for Tailwind CSS v5",
       "npm_name" => "daisyui",
       "compatible_versions" => ["4.x"]
