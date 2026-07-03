@@ -31,14 +31,14 @@ defmodule Defdo.TailwindBuilder.BuildQuickTest do
   @test_scenarios %{
     v4_basic: %{
       version: "4.2.2",
-      plugin: %{"version" => ~s["daisyui": "5.6.7"]},
+      plugin: %{"version" => ~s["daisyui": "5.6.10"]},
       description: "Basic Tailwind v4 with DaisyUI v5",
       expected_duration_ms: 90_000,
       test_css: "@import \"tailwindcss\"; @plugin \"daisyui\";"
     },
     v4_with_theme: %{
       version: "4.2.2",
-      plugin: %{"version" => ~s["daisyui": "5.6.7"]},
+      plugin: %{"version" => ~s["daisyui": "5.6.10"]},
       theme: %{
         "mytheme" => %{
           "primary" => "#570df8",
@@ -65,7 +65,7 @@ defmodule Defdo.TailwindBuilder.BuildQuickTest do
     },
     cross_platform: %{
       version: "4.2.2",
-      plugin: %{"version" => ~s["daisyui": "5.6.7"]},
+      plugin: %{"version" => ~s["daisyui": "5.6.10"]},
       target_arch: "linux-x64",
       description: "Cross-platform build test (macOS → Linux)",
       expected_duration_ms: 100_000,
