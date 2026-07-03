@@ -62,6 +62,7 @@ defmodule Defdo.TailwindBuilder.Downloader do
             maybe_validate_checksum_with_telemetry(content, version, opts[:expected_checksum])},
          {:save, {:ok, tar_path}} <-
            {:save, save_content_with_telemetry(content, destination, version)},
+         {:clean, :ok} <- {:clean, clean_stale_extract(destination, version)},
          {:extract, :ok} <- {:extract, extract_tar_with_telemetry(tar_path)},
          {:cleanup, :ok} <- {:cleanup, cleanup_tar(tar_path)} do
       end_time = System.monotonic_time()
@@ -138,6 +139,20 @@ defmodule Defdo.TailwindBuilder.Downloader do
       Logger.error("Actual:   #{actual_checksum}")
       {:error, :checksum_mismatch}
     end
+  end
+
+  # :erl_tar.extract overwrites files but never removes stale ones, so a
+  # previous build's node_modules/dist/.turbo would survive into a fresh
+  # extract. On ephemeral container backends the workspace is always clean, but
+  # the native macOS builder (local backend) reuses the host and extracts to a
+  # deterministic temp path, so leftovers from a failed run corrupt the next
+  # pnpm/turbo build. Remove the target dir first to guarantee a clean tree.
+  defp clean_stale_extract(destination, version) do
+    destination
+    |> Path.join("tailwindcss-#{version}")
+    |> File.rm_rf!()
+
+    :ok
   end
 
   @doc """

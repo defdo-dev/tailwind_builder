@@ -231,6 +231,12 @@ defmodule Defdo.TailwindBuilder.Builder do
     env_vars =
       if command == "pnpm" and version_is_v4?(version) do
         [
+          # Force pnpm's non-interactive CI behavior. On the native (local
+          # backend) macOS builder there is no TTY, so pnpm's node_modules
+          # purge confirmation aborts install with
+          # ERR_PNPM_ABORTED_REMOVE_MODULES_DIR_NO_TTY. Container backends set
+          # CI already; setting it here makes every backend behave the same.
+          {"CI", "true"},
           {"CARGO_PROFILE_RELEASE_LTO", "off"},
           {"CARGO_TARGET_X86_64_PC_WINDOWS_MSVC_LINKER", "lld-link"}
         ] ++ rust_environment_vars()
