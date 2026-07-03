@@ -1,0 +1,49 @@
+---
+# One-off: bump the macOS native builder's toolchain via its own Woodpecker
+# exec agent (used when the mac isn't SSH-reachable from the operator's network).
+# Runs on the darwin/arm64 local-backend agent. Manual dispatch only.
+#
+# NOTE: the local backend gives each step an ephemeral $HOME, so this uses the
+# absolute /Users/defdo paths (the agent installs into the real home). rustup
+# resolves via RUSTUP_HOME/CARGO_HOME which the agent already exports.
+
+labels:
+  platform: darwin/arm64
+
+when:
+  - event: push
+    branch: provision-mac
+  - event: manual
+
+steps:
+  - name: bump-toolchain
+    image: bash
+    commands:
+      - export H=/Users/defdo
+      - export PATH="$H/.local/bin:$H/.cargo/bin:$H/.bun/bin:/usr/bin:/bin"
+      # Node 22.20.0 (>=22.13 for pnpm 11)
+      - curl -fsSL https://nodejs.org/dist/v22.20.0/node-v22.20.0-darwin-arm64.tar.xz -o /tmp/node.txz
+      - rm -rf "$H/.local/node" && mkdir -p "$H/.local/node"
+      - tar -xJf /tmp/node.txz -C "$H/.local/node" --strip-components=1 && rm -f /tmp/node.txz
+      - ln -sf "$H/.local/node/bin/node" "$H/.local/bin/node"
+      - ln -sf "$H/.local/node/bin/npm" "$H/.local/bin/npm"
+      - ln -sf "$H/.local/node/bin/npx" "$H/.local/bin/npx"
+      - ln -sf "$H/.local/node/bin/corepack" "$H/.local/bin/corepack"
+      - node --version
+      # pnpm via corepack (per-project packageManager)
+      - "$H/.local/node/bin/corepack" enable --install-directory "$H/.local/bin"
+      - "$H/.local/node/bin/corepack" prepare pnpm@11.9.0 --activate
+      - pnpm --version
+      # Rust 1.95.0 + wasm32 (rustup uses the agent's RUSTUP_HOME/CARGO_HOME)
+      - export RUSTUP_HOME="$H/.rustup"; export CARGO_HOME="$H/.cargo"
+      - "$H/.cargo/bin/rustup" toolchain install 1.95.0 --profile minimal
+      - "$H/.cargo/bin/rustup" default 1.95.0
+      - "$H/.cargo/bin/rustup" target add wasm32-wasip1-threads
+      - "$H/.cargo/bin/rustc" --version
+      # Bun 1.3.14
+      - curl -fsSL https://github.com/oven-sh/bun/releases/download/bun-v1.3.14/bun-darwin-aarch64.zip -o /tmp/bun.zip
+      - rm -rf /tmp/bunx && unzip -q /tmp/bun.zip -d /tmp/bunx
+      - mkdir -p "$H/.bun/bin" && mv /tmp/bunx/bun-darwin-aarch64/bun "$H/.bun/bin/bun" && chmod +x "$H/.bun/bin/bun"
+      - rm -rf /tmp/bun.zip /tmp/bunx
+      - "$H/.bun/bin/bun" --version
+      - echo "MAC TOOLCHAIN BUMPED"
