@@ -47,10 +47,6 @@ steps:
   - name: release-canary-linux
     image: hub.defdo.ninja/defdo/tailwind-builder:latest
     environment:
-      # Limit rust codegen parallelism: the Tailwind 4.3.x oxide build (rust 1.95)
-      # under turbo's parallel workspace build spikes memory and gets OOM-killed
-      # on CI (fails at build:wasm -> no dist). Cap it for reliable builds.
-      CARGO_BUILD_JOBS: "1"
       R2_ACCESS_KEY_ID:
         from_secret: r2_access_key_id
       R2_SECRET_ACCESS_KEY:
