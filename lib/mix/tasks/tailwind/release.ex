@@ -2,7 +2,7 @@ defmodule Mix.Tasks.Tailwind.Release do
   @moduledoc """
   Build and publish a Tailwind standalone release candidate.
 
-  Defaults to Tailwind 4.3.2 with DaisyUI 5.6.7 and release channel v4.3.2-rc1.
+  Defaults to Tailwind 4.3.2 with DaisyUI 5.6.10 and release channel v4.3.2-rc1.
 
   ## Options
 
