@@ -296,7 +296,7 @@ defmodule Defdo.TailwindBuilder.ConfigProviders.TestingConfigProvider do
   Check if running in test mode
   """
   def test_mode? do
-    Mix.env() == :test or Application.get_env(:tailwind_builder, :force_test_mode, false)
+    Defdo.TailwindBuilder.Env.current() == :test or Application.get_env(:tailwind_builder, :force_test_mode, false)
   end
 
   @doc """

@@ -308,6 +308,6 @@ defmodule Defdo.TailwindBuilder.ConfigProviders.DevelopmentConfigProvider do
   Check if running in development mode
   """
   def development_mode? do
-    Mix.env() == :dev or Application.get_env(:tailwind_builder, :force_development_mode, false)
+    Defdo.TailwindBuilder.Env.current() == :dev or Application.get_env(:tailwind_builder, :force_development_mode, false)
   end
 end

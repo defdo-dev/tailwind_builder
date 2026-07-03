@@ -112,16 +112,16 @@ defmodule Defdo.TailwindBuilder.ConfigProviderFactory do
         TestingConfigProvider
 
       # Use Mix environment
-      Mix.env() == :prod ->
+      Defdo.TailwindBuilder.Env.current() == :prod ->
         ProductionConfigProvider
 
-      Mix.env() == :staging ->
+      Defdo.TailwindBuilder.Env.current() == :staging ->
         StagingConfigProvider
 
-      Mix.env() == :test ->
+      Defdo.TailwindBuilder.Env.current() == :test ->
         TestingConfigProvider
 
-      Mix.env() == :dev ->
+      Defdo.TailwindBuilder.Env.current() == :dev ->
         DevelopmentConfigProvider
 
       # Default fallback

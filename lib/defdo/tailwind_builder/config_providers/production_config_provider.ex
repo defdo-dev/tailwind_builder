@@ -351,7 +351,7 @@ defmodule Defdo.TailwindBuilder.ConfigProviders.ProductionConfigProvider do
   Check if running in production mode
   """
   def production_mode? do
-    Mix.env() == :prod or Application.get_env(:tailwind_builder, :force_production_mode, false)
+    Defdo.TailwindBuilder.Env.current() == :prod or Application.get_env(:tailwind_builder, :force_production_mode, false)
   end
 
   @doc """
