@@ -106,7 +106,7 @@ defmodule Defdo.TailwindBuilder.ReleaseTest do
         assert result.release_channel == "v4.2.2-rc1"
 
         assert result.plugin_set == [
-                 %{name: "daisyui", version: "5.5.19", plugin_key: "daisyui_v5"}
+                 %{name: "daisyui", version: "5.6.7", plugin_key: "daisyui_v5"}
                ]
 
         assert result.deploy.binaries_deployed == 3
@@ -117,7 +117,7 @@ defmodule Defdo.TailwindBuilder.ReleaseTest do
                  "b8ff36e8115f56883638d593563418ee279be9f8304107add89f79d9cbf5b147"
 
         assert_received {:plugin_opts, plugin_spec, plugin_opts}
-        assert plugin_spec["version"] == ~s["daisyui": "5.5.19"]
+        assert plugin_spec["version"] == ~s["daisyui": "5.6.7"]
         assert plugin_opts[:base_path] == source_path
         assert plugin_opts[:version] == "4.2.2"
 
