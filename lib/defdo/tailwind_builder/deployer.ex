@@ -1413,4 +1413,100 @@ defmodule Defdo.TailwindBuilder.Deployer do
   defp ensure_trailing_newline(value) do
     if String.ends_with?(value, "\n"), do: value, else: value <> "\n"
   end
+
+  @doc """
+  Promote a published channel from one R2 prefix to another (e.g. the CI canary
+  prefix to the production prefix) WITHOUT rebuilding.
+
+  Binaries and `sha256sums.txt` are copied server-side (S3 CopyObject — the exact
+  verified bytes, no download). `manifest.json` and each `manifest.d/<target>.json`
+  fragment are fetched, their prefix references rewritten to the destination, and
+  re-uploaded, so the promoted manifest is self-consistent.
+
+  Options:
+    * `:channel` (required) — e.g. `"v4.3.2-rc1"`. Same dir name on both sides.
+    * `:source_prefix` — default `"tailwind_cli_daisyui_ci_canary"` (canary).
+    * `:dest_prefix` — default `"tailwind_cli_daisyui"` (production).
+    * `:bucket` — default `"defdo"`.
+    * `:storage_base_url` — default `"https://storage.defdo.de"`.
+    * `:fetcher` — `(url -> {:ok, body} | {:error, term})`, injectable for tests.
+
+  R2 credentials are read from `config :tailwind_builder, :storage` (same as the
+  release upload path).
+  """
+  @spec promote_channel(keyword()) :: {:ok, map()} | {:error, term()}
+  def promote_channel(opts) do
+    channel = Keyword.fetch!(opts, :channel)
+    bucket = Keyword.get(opts, :bucket, "defdo")
+    src_prefix = Keyword.get(opts, :source_prefix, "tailwind_cli_daisyui_ci_canary")
+    dst_prefix = Keyword.get(opts, :dest_prefix, "tailwind_cli_daisyui")
+    base_url = Keyword.get(opts, :storage_base_url, "https://storage.defdo.de")
+    fetcher = Keyword.get(opts, :fetcher, &default_promote_fetch/1)
+
+    src_manifest_url = "#{base_url}/#{src_prefix}/#{channel}/manifest.json"
+
+    with {:ok, manifest} <- fetcher.(src_manifest_url),
+         {:ok, decoded} <- decode_manifest(manifest) do
+      req = storage_req()
+      files = decoded["files"] || []
+      target_keys = files |> Enum.map(& &1["target_key"]) |> Enum.reject(&is_nil/1)
+
+      binary_names = Enum.map(files, & &1["filename"]) ++ ["sha256sums.txt"]
+      json_names = ["manifest.json" | Enum.map(target_keys, &"manifest.d/#{&1}.json")]
+
+      with :ok <- copy_objects(req, bucket, src_prefix, dst_prefix, channel, binary_names),
+           :ok <-
+             rewrite_jsons(req, fetcher, base_url, bucket, src_prefix, dst_prefix, channel, json_names) do
+        {:ok,
+         %{
+           channel: channel,
+           promoted_files: length(files),
+           manifest_url: "#{base_url}/#{dst_prefix}/#{channel}/manifest.json"
+         }}
+      end
+    end
+  end
+
+  defp decode_manifest(manifest) when is_map(manifest), do: {:ok, manifest}
+  defp decode_manifest(manifest) when is_binary(manifest), do: Jason.decode(manifest)
+  defp decode_manifest(_), do: {:error, :invalid_manifest}
+
+  defp copy_objects(req, bucket, src_prefix, dst_prefix, channel, names) do
+    Enum.reduce_while(names, :ok, fn name, :ok ->
+      src = "/#{bucket}/#{src_prefix}/#{channel}/#{name}"
+      dst = "/#{bucket}/#{dst_prefix}/#{channel}/#{name}"
+
+      case Req.put(req, url: dst, headers: [{"x-amz-copy-source", src}]) do
+        {:ok, %{status: status}} when status in 200..299 -> {:cont, :ok}
+        {:ok, %{status: status}} -> {:halt, {:error, {:copy_failed, name, status}}}
+        {:error, reason} -> {:halt, {:error, {:copy_failed, name, reason}}}
+      end
+    end)
+  end
+
+  defp rewrite_jsons(req, fetcher, base_url, bucket, src_prefix, dst_prefix, channel, names) do
+    Enum.reduce_while(names, :ok, fn name, :ok ->
+      src_url = "#{base_url}/#{src_prefix}/#{channel}/#{name}"
+
+      with {:ok, body} <- fetcher.(src_url),
+           rewritten <- String.replace(to_string_body(body), src_prefix, dst_prefix),
+           {:ok, %{status: status}} when status in 200..299 <-
+             Req.put(req, url: "/#{bucket}/#{dst_prefix}/#{channel}/#{name}", body: rewritten) do
+        {:cont, :ok}
+      else
+        error -> {:halt, {:error, {:rewrite_failed, name, error}}}
+      end
+    end)
+  end
+
+  defp to_string_body(body) when is_binary(body), do: body
+  defp to_string_body(body), do: Jason.encode!(body)
+
+  defp default_promote_fetch(url) do
+    case Req.get(url, decode_body: false) do
+      {:ok, %{status: 200, body: body}} -> {:ok, body}
+      {:ok, %{status: status}} -> {:error, {:fetch_failed, url, status}}
+      {:error, reason} -> {:error, {:fetch_failed, url, reason}}
+    end
+  end
 end
