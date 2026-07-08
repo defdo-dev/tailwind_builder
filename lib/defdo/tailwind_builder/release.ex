@@ -348,14 +348,14 @@ defmodule Defdo.TailwindBuilder.Release do
     config_provider.get_deployment_config(destination)
   rescue
     CaseClauseError ->
-      Logger.warning(
+      Logger.debug(
         "Config provider #{inspect(config_provider)} does not define deployment config for #{inspect(destination)}, falling back to explicit release options"
       )
 
       %{}
 
     FunctionClauseError ->
-      Logger.warning(
+      Logger.debug(
         "Config provider #{inspect(config_provider)} does not support deployment config lookup for #{inspect(destination)}, falling back to explicit release options"
       )
 
