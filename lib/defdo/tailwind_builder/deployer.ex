@@ -127,7 +127,13 @@ defmodule Defdo.TailwindBuilder.Deployer do
          {:checksums, {:ok, sha256sums}} <-
            {:checksums, maybe_generate_sha256sums(deployed, ctx.generate_checksums)},
          {:manifest, {:ok, manifest}} <-
-           {:manifest, maybe_generate_manifest(deployed, version, ctx.generate_manifest, opts)},
+           {:manifest,
+            maybe_generate_manifest(
+              deployed,
+              version,
+              ctx.generate_manifest,
+              Keyword.put(opts, :smoke_test_results, ctx.smoke_test_results)
+            )},
          {:merge_metadata, {:ok, {manifest, sha256sums, extra_metadata}}} <-
            {:merge_metadata,
             maybe_merge_remote_metadata(mode, version, manifest, sha256sums, opts)},
@@ -351,7 +357,14 @@ defmodule Defdo.TailwindBuilder.Deployer do
     tailwind_cli_version = Keyword.get(opts, :tailwind_cli_version, version)
     release_fingerprint = Keyword.get(opts, :release_fingerprint)
 
-    file_opts = Keyword.put(opts, :built_at, built_at)
+    checks_by_target = build_checks_by_target(Keyword.get(opts, :smoke_test_results))
+
+    file_opts =
+      opts
+      |> Keyword.put(:built_at, built_at)
+      |> Keyword.put(:checks_by_target, checks_by_target)
+
+    files = Enum.map(deployed_files, &format_file_info(&1, file_opts))
 
     manifest = %{
       manifest_schema_version: @manifest_schema_version,
@@ -365,7 +378,8 @@ defmodule Defdo.TailwindBuilder.Deployer do
       host_architecture: compilation_info.host_architecture,
       host_target_key: compilation_info.host_target_key,
       total_files: length(deployed_files),
-      files: Enum.map(deployed_files, &format_file_info(&1, file_opts)),
+      files: files,
+      plugin_verification: summarize_plugin_verification(files),
       provenance: build_provenance(opts),
       metadata: %{
         cross_compilation_available: compilation_info.cross_compilation_available,
@@ -635,7 +649,7 @@ defmodule Defdo.TailwindBuilder.Deployer do
   #
   # Skipped for dry-run, when disabled via `merge_manifest: false`, or when there
   # is no manifest to merge.
-  @file_keys ~w(filename artifact_name target_key build_target remote_key storage_url checksum_sha256 size_bytes size_mb built_at architecture status plugin_set release_fingerprint)a
+  @file_keys ~w(filename artifact_name target_key build_target remote_key storage_url checksum_sha256 size_bytes size_mb built_at architecture status plugin_set plugin_checks release_fingerprint)a
   @plugin_keys ~w(name version plugin_key)a
 
   # Returns `{:ok, {manifest, sha256sums, extra_files}}` where `extra_files` is a
@@ -1244,6 +1258,7 @@ defmodule Defdo.TailwindBuilder.Deployer do
       built_at: Keyword.get(opts, :built_at),
       architecture: target_key,
       plugin_set: Keyword.get(opts, :plugin_set, []),
+      plugin_checks: checks_for(target_key, opts),
       release_fingerprint: Keyword.get(opts, :release_fingerprint)
     }
   end
@@ -1273,9 +1288,39 @@ defmodule Defdo.TailwindBuilder.Deployer do
       size_mb: Float.round(size / (1024 * 1024), 2),
       architecture: target_key,
       plugin_set: Keyword.get(opts, :plugin_set, []),
+      plugin_checks: checks_for(target_key, opts),
       release_fingerprint: Keyword.get(opts, :release_fingerprint),
       status: "pending"
     }
+  end
+
+  # Per-plugin functional evidence for a target, from the smoke-test results.
+  defp checks_for(target_key, opts) do
+    opts |> Keyword.get(:checks_by_target, %{}) |> Map.get(target_key, [])
+  end
+
+  defp build_checks_by_target(%{results: results}) when is_list(results) do
+    Map.new(results, fn r -> {Map.get(r, :target_key), Map.get(r, :checks, [])} end)
+  end
+
+  defp build_checks_by_target(_), do: %{}
+
+  # Overall plugin-verification for the manifest: verified when every probe
+  # generated its marker, unverified when a plugin has no probe, failed if any
+  # probe missed (fail-closed should prevent publish, but record it defensively).
+  defp summarize_plugin_verification(files) do
+    checks = Enum.flat_map(files, fn f -> Map.get(f, :plugin_checks) || [] end)
+    statuses = checks |> Enum.map(& &1.status) |> Enum.uniq()
+
+    status =
+      cond do
+        :failed in statuses -> :failed
+        :unverified in statuses -> :unverified
+        checks == [] -> :unknown
+        true -> :verified
+      end
+
+    %{status: status, checks: checks}
   end
 
   defp maybe_upload_release_metadata(_destination, _version, nil, nil, [], _opts), do: {:ok, []}
