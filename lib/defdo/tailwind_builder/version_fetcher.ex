@@ -32,7 +32,17 @@ defmodule Defdo.TailwindBuilder.VersionFetcher do
         {:ok, version}
 
       :cache_miss ->
-        case fetch_github_latest_release("tailwindlabs", "tailwindcss") do
+        # npm dist-tags is the authoritative "latest" (GitHub /releases/latest
+        # lags — it returned 4.1.11 while 4.3.2 was already published). The
+        # source is still downloaded from the matching GitHub tag (v<version>);
+        # npm is only the version oracle, GitHub release the fallback.
+        result =
+          case fetch_npm_latest_version("tailwindcss") do
+            {:ok, version} -> {:ok, version}
+            {:error, _} -> fetch_github_latest_release("tailwindlabs", "tailwindcss")
+          end
+
+        case result do
           {:ok, version} ->
             Logger.info("Latest Tailwind CSS version: #{version}")
             maybe_cache_version("tailwind_latest", version, use_cache)
@@ -259,21 +269,24 @@ defmodule Defdo.TailwindBuilder.VersionFetcher do
   end
 
   defp fetch_json_api(url) do
-    try do
-      case fetch_http_content(url) do
-        {:ok, body} when is_binary(body) ->
-          case Jason.decode(body) do
-            {:ok, data} -> {:ok, data}
-            {:error, reason} -> {:error, {:json_decode_error, reason}}
-          end
+    # Use Req, not httpc: httpc's default TLS wildcard-hostname check rejects
+    # npm's `*.npmjs.org` cert for `registry.npmjs.org` (hostname_check_failed).
+    # Req validates it correctly and auto-decodes JSON.
+    case Req.get(url, retry: false, receive_timeout: 10_000) do
+      {:ok, %Req.Response{status: 200, body: body}} when is_map(body) ->
+        {:ok, body}
 
-        {:error, error} ->
-          {:error, {:fetch_error, error}}
-      end
-    rescue
-      error ->
-        {:error, {:exception, error}}
+      {:ok, %Req.Response{status: 200, body: body}} when is_binary(body) ->
+        Jason.decode(body)
+
+      {:ok, %Req.Response{status: status}} ->
+        {:error, {:http_status, status}}
+
+      {:error, reason} ->
+        {:error, {:fetch_error, reason}}
     end
+  rescue
+    error -> {:error, {:exception, error}}
   end
 
   defp download_for_checksum(url) do
@@ -283,13 +296,6 @@ defmodule Defdo.TailwindBuilder.VersionFetcher do
     rescue
       error ->
         {:error, {:download_failed, error}}
-    end
-  end
-
-  defp fetch_http_content(url) do
-    case fetch_http_content_raw(url) do
-      body when is_binary(body) -> {:ok, body}
-      error -> {:error, error}
     end
   end
 
