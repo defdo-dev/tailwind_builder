@@ -1057,13 +1057,21 @@ defmodule Defdo.TailwindBuilder.Deployer do
   defp maybe_smoke_test_binaries(_binaries, _version, false, _opts), do: {:ok, nil}
 
   defp maybe_smoke_test_binaries(binaries, version, true, opts) do
+    host = Core.get_host_architecture()
+
     runnable_binaries =
-      Enum.filter(binaries, fn %{architecture: architecture} ->
-        match_architecture?(architecture, Core.get_host_architecture())
-      end)
+      Enum.filter(binaries, fn b -> match_architecture?(Map.get(b, :architecture), host) end)
+
+    Logger.info(
+      "Smoke test: host=#{host} binaries=#{inspect(Enum.map(binaries, &Map.get(&1, :architecture)))} runnable=#{length(runnable_binaries)}"
+    )
 
     cond do
       runnable_binaries == [] ->
+        Logger.warning(
+          "Smoke test SKIPPED: no runnable binary matches host #{host} — plugin verification will be empty"
+        )
+
         {:ok, %{tested: 0, skipped: length(binaries), results: []}}
 
       String.starts_with?(version, "4.") or Keyword.has_key?(opts, :input_css) ->
@@ -1084,6 +1092,10 @@ defmodule Defdo.TailwindBuilder.Deployer do
 
             %{target_key: Map.get(binary_info, :target_key), checks: checks}
           end)
+
+        Logger.info(
+          "Smoke test plugin checks: #{inspect(Enum.flat_map(results, & &1.checks))}"
+        )
 
         # Fail-closed: any plugin whose registered probe did not generate its
         # marker fails the whole deploy (the binary is never published).
