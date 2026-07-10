@@ -1555,15 +1555,23 @@ defmodule Defdo.TailwindBuilder.Deployer do
           |> String.replace(src_prefix, dst_prefix)
         end
 
-      with {:ok, body} <- fetcher.(src_url),
-           {:ok, %{status: status}} when status in 200..299 <-
-             Req.put(req,
-               url: "/#{bucket}/#{dst_prefix}/#{dst_channel}/#{name}",
-               body: rewritten.(body)
-             ) do
-        {:cont, :ok}
-      else
-        error -> {:halt, {:error, {:rewrite_failed, name, error}}}
+      case fetcher.(src_url) do
+        # Optional per-target fragments (manifest.d/*) are absent in older
+        # single-file manifests — skip a source that does not exist.
+        {:error, {:fetch_failed, _url, 404}} ->
+          {:cont, :ok}
+
+        {:ok, body} ->
+          case Req.put(req,
+                 url: "/#{bucket}/#{dst_prefix}/#{dst_channel}/#{name}",
+                 body: rewritten.(body)
+               ) do
+            {:ok, %{status: status}} when status in 200..299 -> {:cont, :ok}
+            error -> {:halt, {:error, {:rewrite_failed, name, error}}}
+          end
+
+        error ->
+          {:halt, {:error, {:rewrite_failed, name, error}}}
       end
     end)
   end
