@@ -13,7 +13,7 @@ defmodule Defdo.TailwindBuilder.Deployer do
   """
 
   require Logger
-  alias Defdo.TailwindBuilder.{Core, Telemetry}
+  alias Defdo.TailwindBuilder.{Core, PluginProbes, Telemetry}
   alias Defdo.TailwindBuilder.Core.Targets
 
   @doc """
@@ -530,6 +530,69 @@ defmodule Defdo.TailwindBuilder.Deployer do
   end
 
   @doc """
+  Runs a functional probe per plugin against a built binary and returns the
+  per-plugin evidence. Each check is `:verified` (probe generated its marker),
+  `:failed` (probe ran but the marker is missing), or `:unverified` (no probe is
+  registered for the package). Fail-closed is the caller's job: any `:failed`
+  check should fail the build.
+  """
+  @spec smoke_test_plugins(String.t(), [String.t()], keyword()) :: [map()]
+  def smoke_test_plugins(binary_path, packages, opts \\ []) do
+    Enum.map(packages, fn package ->
+      case PluginProbes.probe_for(package) do
+        nil ->
+          %{plugin: package, status: :unverified}
+
+        %{content: content, expected: expected} ->
+          probe_opts =
+            opts
+            |> Keyword.put(:input_css, PluginProbes.input_css(package))
+            |> Keyword.put(:content_html, "<div>#{content}</div>")
+            |> Keyword.put(:expected_patterns, expected)
+
+          case smoke_test_binary(binary_path, probe_opts) do
+            {:ok, result} ->
+              %{plugin: package, status: :verified, expected: expected, output_bytes: result.output_bytes}
+
+            {:error, reason} ->
+              %{plugin: package, status: :failed, expected: expected, reason: inspect(reason)}
+          end
+      end
+    end)
+  end
+
+  @doc """
+  Extract npm package names from a plugin_set (maps or `key=name@ver`/`name@ver`
+  strings), for probe lookup.
+  """
+  @spec plugin_packages(list()) :: [String.t()]
+  def plugin_packages(plugin_set) when is_list(plugin_set) do
+    plugin_set
+    |> Enum.map(&plugin_package/1)
+    |> Enum.reject(&(&1 in [nil, ""]))
+    |> Enum.uniq()
+  end
+
+  def plugin_packages(_), do: []
+
+  defp plugin_package(%{} = entry) do
+    entry["npm_source"] || entry["name"] || entry[:npm_source] || entry[:name]
+  end
+
+  defp plugin_package(entry) when is_binary(entry) do
+    # "daisyui_v5=daisyui@5.6.10" -> "daisyui"; "daisyui@5.6.10" -> "daisyui".
+    name_ver = entry |> String.split("=", parts: 2) |> List.last()
+    idx = :binary.matches(name_ver, "@") |> List.last()
+
+    case idx do
+      {pos, _} when pos > 0 -> binary_part(name_ver, 0, pos)
+      _ -> name_ver
+    end
+  end
+
+  defp plugin_package(_), do: nil
+
+  @doc """
   Verifica si un archivo es ejecutable
   """
   def is_executable?(file_path) do
@@ -990,16 +1053,30 @@ defmodule Defdo.TailwindBuilder.Deployer do
         {:ok, %{tested: 0, skipped: length(binaries), results: []}}
 
       String.starts_with?(version, "4.") or Keyword.has_key?(opts, :input_css) ->
+        packages = plugin_packages(Keyword.get(opts, :plugin_set, []))
+
         results =
           Enum.map(runnable_binaries, fn binary_info ->
-            smoke_test_binary(binary_info.path, opts)
+            checks =
+              if packages == [] do
+                # No plugins declared — fall back to the base Tailwind probe.
+                case smoke_test_binary(binary_info.path, opts) do
+                  {:ok, _} -> [%{plugin: "tailwindcss", status: :verified}]
+                  {:error, reason} -> [%{plugin: "tailwindcss", status: :failed, reason: inspect(reason)}]
+                end
+              else
+                smoke_test_plugins(binary_info.path, packages, opts)
+              end
+
+            %{target_key: Map.get(binary_info, :target_key), checks: checks}
           end)
 
+        # Fail-closed: any plugin whose registered probe did not generate its
+        # marker fails the whole deploy (the binary is never published).
         failures =
-          Enum.filter(results, fn
-            {:error, _reason} -> true
-            _ -> false
-          end)
+          results
+          |> Enum.flat_map(& &1.checks)
+          |> Enum.filter(&(&1.status == :failed))
 
         case failures do
           [] ->
@@ -1512,6 +1589,36 @@ defmodule Defdo.TailwindBuilder.Deployer do
   # Strip a canary pre-release suffix (-rc1, -beta2, …) so production uses the
   # bare Tailwind release tag; leave already-bare tags untouched.
   defp prod_channel(channel), do: Regex.replace(~r/-(rc|beta|alpha)\d*$/i, channel, "")
+
+  @doc """
+  Lists the published channel/version directories directly under an R2 `prefix`
+  (via S3 ListObjectsV2 with a `/` delimiter), e.g. `["v4.2.2", "v4.3.2-rc1"]`.
+  """
+  @spec list_published_channels(String.t(), keyword()) :: {:ok, [String.t()]} | {:error, term()}
+  def list_published_channels(prefix, opts \\ []) do
+    bucket = Keyword.get(opts, :bucket, "defdo")
+    req = storage_req()
+
+    case Req.get(req,
+           url: "/#{bucket}",
+           params: %{"list-type" => "2", "prefix" => "#{prefix}/", "delimiter" => "/"},
+           decode_body: false
+         ) do
+      {:ok, %{status: 200, body: body}} -> {:ok, parse_common_prefixes(body, prefix)}
+      {:ok, %{status: status}} -> {:error, {:list_failed, status}}
+      {:error, reason} -> {:error, {:list_failed, reason}}
+    end
+  end
+
+  defp parse_common_prefixes(body, prefix) do
+    xml = to_string_body(body)
+
+    ~r{<Prefix>#{Regex.escape(prefix)}/([^/<]+)/</Prefix>}
+    |> Regex.scan(xml)
+    |> Enum.map(fn [_, version] -> version end)
+    |> Enum.uniq()
+    |> Enum.sort()
+  end
 
   defp decode_manifest(manifest) when is_map(manifest), do: {:ok, manifest}
   defp decode_manifest(manifest) when is_binary(manifest), do: Jason.decode(manifest)
