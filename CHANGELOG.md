@@ -2,29 +2,20 @@
 
 ## [Unreleased]
 
+## [0.2.0]
+
 ### Added
-- Automated Bun installation in `mix tailwind.install_deps` for Tailwind v4 builds
-- Enhanced Livebook deployment snippet with detailed Cloudflare R2 error reporting
-- Enhanced plugin patching support for Tailwind CSS v4
-- Improved plugin detection with regex pattern matching
-- Simplified module resolution approach
-- Updated tests to verify new patching behavior
+- Manifest includes `release_fingerprint` per artifact tying each published file to its frozen recipe.
+- Manifest preserves per-file `plugin_set` evidence for downstream promote gates.
+- Deployer merge filters stale artifacts whose fingerprint doesn't match the incoming recipe.
 
 ### Changed
-- Tailwind v4 build steps automatically propagate `rustup` environment variables and patch `turbo.json`
-- Modified index.ts patching strategy to better handle plugin imports
-- Improved plugin path resolution for better compatibility with Tailwind CSS v4
-- Simplified patching approach with regex-based module resolution
+- Release resolves `plugin_key` from the spec map so explicit key tracking survives the full pipeline.
 
 ### Fixed
-- Fixed plugin import resolution in standalone builds
-- Improved module path handling with more robust pattern matching
+- Fixed plugin import resolution in standalone builds.
 
-- Added support for Tailwind CSS v4
-- Added support for DaisyUI v5
-- Implemented patching for index.ts in Tailwind v4
-- Added R2 deployment functionality
-- Fixed comma issue in TypeScript patching
+## [0.1.0]
 
 ## 0.1.0
 

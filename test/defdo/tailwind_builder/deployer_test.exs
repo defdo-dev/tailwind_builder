@@ -63,6 +63,7 @@ defmodule Defdo.TailwindBuilder.DeployerTest do
         end)
 
       assert macos_entry.artifact_name == "tailwindcss-macos-arm64"
+      assert macos_entry.plugin_set == [%{name: "daisyui", version: "5.5.19"}]
 
       assert macos_entry.storage_url ==
                "https://storage.defdo.de/tailwind_cli_daisyui/v4.2.2-rc1/tailwindcss-macos-arm64"
@@ -551,10 +552,13 @@ defmodule Defdo.TailwindBuilder.DeployerTest do
                  release_channel: "v4.2.2-rc1",
                  storage_base_url: "https://storage.defdo.de",
                  merge_manifest: true,
-                 compose_targets: ["linux-x64", "linux-arm64", "macos-arm64"]
+                 compose_targets: ["linux-x64", "linux-arm64", "macos-arm64"],
+                 release_fingerprint: "recipe-test"
                )
 
       assert result.dry_run == true
+      assert result.manifest.release_fingerprint == "recipe-test"
+      assert Enum.all?(result.manifest.files, &(&1.release_fingerprint == "recipe-test"))
     end
 
     test "is deterministic across reruns", %{dir: dir} do
@@ -637,7 +641,9 @@ defmodule Defdo.TailwindBuilder.DeployerTest do
         "release_channel" => "v4.2.2-rc1",
         "tailwind_cli_version" => "4.2.2",
         "total_files" => 1,
-        "plugin_set" => [%{"name" => "daisyui", "version" => "5.5.19", "plugin_key" => "daisyui_v5"}],
+        "plugin_set" => [
+          %{"name" => "daisyui", "version" => "5.5.19", "plugin_key" => "daisyui_v5"}
+        ],
         "files" => [
           %{
             "filename" => "tailwindcss-macos-arm64",
@@ -679,9 +685,10 @@ defmodule Defdo.TailwindBuilder.DeployerTest do
     end
 
     test "accumulates a new target into a previously published manifest" do
-      {merged, sums} = Deployer.merge_published_manifest(remote_macos_manifest(), local_linux_manifest())
+      {merged, sums} =
+        Deployer.merge_published_manifest(remote_macos_manifest(), local_linux_manifest())
 
-      target_keys = merged.files |> Enum.map(&(&1[:target_key])) |> Enum.sort()
+      target_keys = merged.files |> Enum.map(& &1[:target_key]) |> Enum.sort()
       assert target_keys == ["linux-x64", "macos-arm64"]
       assert merged.total_files == 2
       # Plugin set de-duplicated by plugin_key, not doubled.
@@ -689,6 +696,28 @@ defmodule Defdo.TailwindBuilder.DeployerTest do
 
       # sha256sums regenerated from the merged file list, sorted, both targets.
       assert sums == "linsum  tailwindcss-linux-x64\nmacsum  tailwindcss-macos-arm64"
+    end
+
+    test "does not carry stale artifacts from another frozen recipe" do
+      remote =
+        remote_macos_manifest()
+        |> Map.put("release_fingerprint", "recipe-old")
+        |> update_in(["files"], fn files ->
+          Enum.map(files, &Map.put(&1, "release_fingerprint", "recipe-old"))
+        end)
+
+      local =
+        local_linux_manifest()
+        |> Map.put(:release_fingerprint, "recipe-new")
+        |> update_in([:files], fn files ->
+          Enum.map(files, &Map.put(&1, :release_fingerprint, "recipe-new"))
+        end)
+
+      {merged, sums} = Deployer.merge_published_manifest(remote, local)
+
+      assert Enum.map(merged.files, & &1.target_key) == ["linux-x64"]
+      assert merged.release_fingerprint == "recipe-new"
+      assert sums == "linsum  tailwindcss-linux-x64"
     end
 
     test "local entry wins on filename collision (re-publishing same target)" do
@@ -745,7 +774,7 @@ defmodule Defdo.TailwindBuilder.DeployerTest do
 
       composed = Deployer.compose_manifest(base, siblings)
 
-      target_keys = composed.files |> Enum.map(&(&1[:target_key])) |> Enum.sort()
+      target_keys = composed.files |> Enum.map(& &1[:target_key]) |> Enum.sort()
       assert target_keys == ["linux-arm64", "linux-x64", "macos-arm64"]
       assert composed.total_files == 3
     end
@@ -755,7 +784,7 @@ defmodule Defdo.TailwindBuilder.DeployerTest do
       mac = sibling_manifest("tailwindcss-macos-arm64", "macos-arm64", "macsum")
       arm = sibling_manifest("tailwindcss-linux-arm64", "linux-arm64", "armsum")
 
-      keys = fn m -> m.files |> Enum.map(&(&1[:target_key])) |> Enum.sort() end
+      keys = fn m -> m.files |> Enum.map(& &1[:target_key]) |> Enum.sort() end
 
       assert keys.(Deployer.compose_manifest(base, [mac, arm])) ==
                keys.(Deployer.compose_manifest(base, [arm, mac]))

@@ -52,6 +52,7 @@ defmodule Defdo.TailwindBuilder.Release do
         :tailwind_version,
         :tailwind_cli_version,
         :source_checksum,
+        :release_fingerprint,
         :merge_manifest,
         :compose_targets
       ])
@@ -103,11 +104,13 @@ defmodule Defdo.TailwindBuilder.Release do
            ),
          {:plugins, {:ok, resolved_plugins, plugin_set}} <-
            {:plugins, resolve_plugins(plugins, config_provider)},
+         :ok <- log_resolved_plugins(plugin_set),
          :ok <- ensure_storage_config(destination, dry_run),
          {:download, {:ok, download_result}} <-
            {:download, download_source(version, source_path, config_provider)},
          {:apply_plugins, {:ok, plugin_results}} <-
            {:apply_plugins, apply_plugins(resolved_plugins, version, source_path)},
+         :ok <- log_applied_plugins(plugin_set),
          {:build, {:ok, build_result}} <-
            {:build,
             Builder.compile(
@@ -141,6 +144,7 @@ defmodule Defdo.TailwindBuilder.Release do
               tailwind_version: Keyword.get(opts, :tailwind_version, version),
               tailwind_cli_version: Keyword.get(opts, :tailwind_cli_version, version),
               source_checksum: Keyword.get(opts, :source_checksum),
+              release_fingerprint: Keyword.get(opts, :release_fingerprint),
               merge_manifest: Keyword.get(opts, :merge_manifest, true),
               compose_targets: Keyword.get(opts, :compose_targets)
             )} do
@@ -237,7 +241,7 @@ defmodule Defdo.TailwindBuilder.Release do
           end
 
         %{"version" => _version} = spec ->
-          name = PluginManager.extract_plugin_name(spec)
+          name = Map.get(spec, "plugin_key") || PluginManager.extract_plugin_name(spec)
 
           {:ok,
            %{
@@ -281,6 +285,27 @@ defmodule Defdo.TailwindBuilder.Release do
       [] -> {:ok, results}
       _ -> {:error, {:plugin_failures, failures}}
     end
+  end
+
+  defp log_resolved_plugins(plugin_set) do
+    Logger.info("Resolved release plugins: #{format_plugin_set(plugin_set)}")
+    :ok
+  end
+
+  defp log_applied_plugins(plugin_set) do
+    Logger.info("Applied release plugins: #{format_plugin_set(plugin_set)}")
+    :ok
+  end
+
+  defp format_plugin_set([]), do: "none"
+
+  defp format_plugin_set(plugin_set) do
+    Enum.map_join(plugin_set, ", ", fn plugin ->
+      key = plugin[:plugin_key] || plugin["plugin_key"] || "unknown"
+      name = plugin[:name] || plugin["name"] || "unknown"
+      version = plugin[:version] || plugin["version"] || "unknown"
+      "#{key}=#{name}@#{version}"
+    end)
   end
 
   defp manifest_plugin_entry(plugin_name, %{"version" => version_spec}) do

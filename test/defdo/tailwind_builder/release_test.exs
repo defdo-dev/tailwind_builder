@@ -99,7 +99,12 @@ defmodule Defdo.TailwindBuilder.ReleaseTest do
                    bucket: "defdo",
                    prefix: "tailwind_cli_daisyui",
                    storage_base_url: "https://storage.defdo.de",
-                   plugins: ["daisyui_v5"]
+                   plugins: [
+                     %{
+                       "plugin_key" => "daisyui_v5",
+                       "version" => ~s["daisyui": "5.6.10"]
+                     }
+                   ]
                  )
 
         assert result.version == "4.2.2"
@@ -117,6 +122,7 @@ defmodule Defdo.TailwindBuilder.ReleaseTest do
                  "b8ff36e8115f56883638d593563418ee279be9f8304107add89f79d9cbf5b147"
 
         assert_received {:plugin_opts, plugin_spec, plugin_opts}
+        assert plugin_spec["plugin_key"] == "daisyui_v5"
         assert plugin_spec["version"] == ~s["daisyui": "5.6.10"]
         assert plugin_opts[:base_path] == source_path
         assert plugin_opts[:version] == "4.2.2"

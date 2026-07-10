@@ -65,6 +65,7 @@ defmodule Defdo.TailwindBuilder.Deployer do
         :tailwind_version,
         :tailwind_cli_version,
         :source_checksum,
+        :release_fingerprint,
         :merge_manifest,
         :compose_targets,
         :manifest_merge_fetcher
@@ -348,6 +349,7 @@ defmodule Defdo.TailwindBuilder.Deployer do
     plugin_set = Keyword.get(opts, :plugin_set, [])
     tailwind_version = Keyword.get(opts, :tailwind_version, version)
     tailwind_cli_version = Keyword.get(opts, :tailwind_cli_version, version)
+    release_fingerprint = Keyword.get(opts, :release_fingerprint)
 
     file_opts = Keyword.put(opts, :built_at, built_at)
 
@@ -357,6 +359,7 @@ defmodule Defdo.TailwindBuilder.Deployer do
       tailwind_version: tailwind_version,
       tailwind_cli_version: tailwind_cli_version,
       release_channel: release_channel,
+      release_fingerprint: release_fingerprint,
       built_at: built_at,
       compilation_method: compilation_info.compilation_method,
       host_architecture: compilation_info.host_architecture,
@@ -569,7 +572,7 @@ defmodule Defdo.TailwindBuilder.Deployer do
   #
   # Skipped for dry-run, when disabled via `merge_manifest: false`, or when there
   # is no manifest to merge.
-  @file_keys ~w(filename artifact_name target_key build_target remote_key storage_url checksum_sha256 size_bytes size_mb built_at architecture status)a
+  @file_keys ~w(filename artifact_name target_key build_target remote_key storage_url checksum_sha256 size_bytes size_mb built_at architecture status plugin_set release_fingerprint)a
   @plugin_keys ~w(name version plugin_key)a
 
   # Returns `{:ok, {manifest, sha256sums, extra_files}}` where `extra_files` is a
@@ -592,7 +595,8 @@ defmodule Defdo.TailwindBuilder.Deployer do
         compose_channel_metadata(version, manifest, sums, opts)
 
       Keyword.get(opts, :merge_manifest, true) ->
-        with {:ok, {merged, merged_sums}} <- do_merge_remote_metadata(version, manifest, sums, opts) do
+        with {:ok, {merged, merged_sums}} <-
+               do_merge_remote_metadata(version, manifest, sums, opts) do
           {:ok, {merged, merged_sums, []}}
         end
 
@@ -646,9 +650,7 @@ defmodule Defdo.TailwindBuilder.Deployer do
             []
 
           {:error, reason} ->
-            Logger.warning(
-              "Compose skipped sibling fragment #{target}: #{inspect(reason)}"
-            )
+            Logger.warning("Compose skipped sibling fragment #{target}: #{inspect(reason)}")
 
             []
         end
@@ -709,7 +711,8 @@ defmodule Defdo.TailwindBuilder.Deployer do
         :none
 
       url ->
-        fetcher = Keyword.get(opts, :manifest_merge_fetcher) || (&default_manifest_merge_fetcher/1)
+        fetcher =
+          Keyword.get(opts, :manifest_merge_fetcher) || (&default_manifest_merge_fetcher/1)
 
         case fetcher.(url) do
           {:ok, body} when is_map(body) -> {:ok, body}
@@ -759,7 +762,14 @@ defmodule Defdo.TailwindBuilder.Deployer do
   end
 
   defp merge_manifests(remote, local) do
-    remote_files = Enum.map(manifest_files(remote), &normalize_keyed(&1, @file_keys))
+    local_fingerprint = fetch_any(local, :release_fingerprint)
+
+    remote_files =
+      remote
+      |> manifest_files()
+      |> Enum.map(&normalize_keyed(&1, @file_keys))
+      |> Enum.filter(&same_release_fingerprint?(&1, local_fingerprint))
+
     local_files = Enum.map(manifest_files(local), &normalize_keyed(&1, @file_keys))
     local_keys = MapSet.new(local_files, &file_key/1)
 
@@ -810,6 +820,11 @@ defmodule Defdo.TailwindBuilder.Deployer do
 
   defp file_key(file), do: fetch_any(file, :filename) || fetch_any(file, :target_key)
   defp plugin_key(plugin), do: fetch_any(plugin, :plugin_key) || fetch_any(plugin, :name)
+
+  defp same_release_fingerprint?(_file, nil), do: true
+
+  defp same_release_fingerprint?(file, fingerprint),
+    do: fetch_any(file, :release_fingerprint) == fingerprint
 
   # JSON fetched from storage has string keys; locally generated maps have atom
   # keys. Normalize a single entry to atom keys over a fixed, known key set so we
@@ -1150,7 +1165,9 @@ defmodule Defdo.TailwindBuilder.Deployer do
       size_bytes: deployed_info.size,
       size_mb: Float.round(deployed_info.size / (1024 * 1024), 2),
       built_at: Keyword.get(opts, :built_at),
-      architecture: target_key
+      architecture: target_key,
+      plugin_set: Keyword.get(opts, :plugin_set, []),
+      release_fingerprint: Keyword.get(opts, :release_fingerprint)
     }
   end
 
@@ -1178,6 +1195,8 @@ defmodule Defdo.TailwindBuilder.Deployer do
       size_bytes: size,
       size_mb: Float.round(size / (1024 * 1024), 2),
       architecture: target_key,
+      plugin_set: Keyword.get(opts, :plugin_set, []),
+      release_fingerprint: Keyword.get(opts, :release_fingerprint),
       status: "pending"
     }
   end
@@ -1213,7 +1232,14 @@ defmodule Defdo.TailwindBuilder.Deployer do
     end
   end
 
-  defp maybe_upload_release_metadata(_destination, _version, _manifest, _sha256sums, _extra, _opts) do
+  defp maybe_upload_release_metadata(
+         _destination,
+         _version,
+         _manifest,
+         _sha256sums,
+         _extra,
+         _opts
+       ) do
     {:ok, []}
   end
 
@@ -1456,7 +1482,16 @@ defmodule Defdo.TailwindBuilder.Deployer do
 
       with :ok <- copy_objects(req, bucket, src_prefix, dst_prefix, channel, binary_names),
            :ok <-
-             rewrite_jsons(req, fetcher, base_url, bucket, src_prefix, dst_prefix, channel, json_names) do
+             rewrite_jsons(
+               req,
+               fetcher,
+               base_url,
+               bucket,
+               src_prefix,
+               dst_prefix,
+               channel,
+               json_names
+             ) do
         {:ok,
          %{
            channel: channel,
