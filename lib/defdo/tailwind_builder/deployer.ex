@@ -88,7 +88,13 @@ defmodule Defdo.TailwindBuilder.Deployer do
               binaries,
               version,
               smoke_test_binaries,
-              Keyword.get(opts, :smoke_test_opts, [])
+              # The smoke test needs the plugin_set to probe each plugin; merge it
+              # into the (usually empty) smoke_test_opts.
+              Keyword.put(
+                Keyword.get(opts, :smoke_test_opts, []),
+                :plugin_set,
+                Keyword.get(opts, :plugin_set, [])
+              )
             )} do
       finish_deploy(binaries, %{
         version: version,
@@ -1090,7 +1096,10 @@ defmodule Defdo.TailwindBuilder.Deployer do
                 smoke_test_plugins(binary_info.path, packages, opts)
               end
 
-            %{target_key: Map.get(binary_info, :target_key), checks: checks}
+            # Manifest file entries are keyed by target_key (== architecture here);
+            # binary_info exposes :architecture, so fall back to it.
+            target_key = Map.get(binary_info, :target_key) || Map.get(binary_info, :architecture)
+            %{target_key: target_key, checks: checks}
           end)
 
         Logger.info(
