@@ -1463,6 +1463,10 @@ defmodule Defdo.TailwindBuilder.Deployer do
   @spec promote_channel(keyword()) :: {:ok, map()} | {:error, term()}
   def promote_channel(opts) do
     channel = Keyword.fetch!(opts, :channel)
+    # Production channels follow the upstream Tailwind release tag exactly (e.g.
+    # v4.3.2) — only the domain + path prefix differ from tailwindlabs' URLs.
+    # The canary pre-release suffix (v4.3.2-rc1) is dropped on promotion.
+    dst_channel = Keyword.get(opts, :dest_channel, prod_channel(channel))
     bucket = Keyword.get(opts, :bucket, "defdo")
     src_prefix = Keyword.get(opts, :source_prefix, "tailwind_cli_daisyui_ci_canary")
     dst_prefix = Keyword.get(opts, :dest_prefix, "tailwind_cli_daisyui")
@@ -1480,7 +1484,8 @@ defmodule Defdo.TailwindBuilder.Deployer do
       binary_names = Enum.map(files, & &1["filename"]) ++ ["sha256sums.txt"]
       json_names = ["manifest.json" | Enum.map(target_keys, &"manifest.d/#{&1}.json")]
 
-      with :ok <- copy_objects(req, bucket, src_prefix, dst_prefix, channel, binary_names),
+      with :ok <-
+             copy_objects(req, bucket, src_prefix, dst_prefix, channel, dst_channel, binary_names),
            :ok <-
              rewrite_jsons(
                req,
@@ -1490,26 +1495,32 @@ defmodule Defdo.TailwindBuilder.Deployer do
                src_prefix,
                dst_prefix,
                channel,
+               dst_channel,
                json_names
              ) do
         {:ok,
          %{
-           channel: channel,
+           channel: dst_channel,
+           source_channel: channel,
            promoted_files: length(files),
-           manifest_url: "#{base_url}/#{dst_prefix}/#{channel}/manifest.json"
+           manifest_url: "#{base_url}/#{dst_prefix}/#{dst_channel}/manifest.json"
          }}
       end
     end
   end
 
+  # Strip a canary pre-release suffix (-rc1, -beta2, …) so production uses the
+  # bare Tailwind release tag; leave already-bare tags untouched.
+  defp prod_channel(channel), do: Regex.replace(~r/-(rc|beta|alpha)\d*$/i, channel, "")
+
   defp decode_manifest(manifest) when is_map(manifest), do: {:ok, manifest}
   defp decode_manifest(manifest) when is_binary(manifest), do: Jason.decode(manifest)
   defp decode_manifest(_), do: {:error, :invalid_manifest}
 
-  defp copy_objects(req, bucket, src_prefix, dst_prefix, channel, names) do
+  defp copy_objects(req, bucket, src_prefix, dst_prefix, src_channel, dst_channel, names) do
     Enum.reduce_while(names, :ok, fn name, :ok ->
-      src = "/#{bucket}/#{src_prefix}/#{channel}/#{name}"
-      dst = "/#{bucket}/#{dst_prefix}/#{channel}/#{name}"
+      src = "/#{bucket}/#{src_prefix}/#{src_channel}/#{name}"
+      dst = "/#{bucket}/#{dst_prefix}/#{dst_channel}/#{name}"
 
       case Req.put(req, url: dst, headers: [{"x-amz-copy-source", src}]) do
         {:ok, %{status: status}} when status in 200..299 -> {:cont, :ok}
@@ -1519,14 +1530,37 @@ defmodule Defdo.TailwindBuilder.Deployer do
     end)
   end
 
-  defp rewrite_jsons(req, fetcher, base_url, bucket, src_prefix, dst_prefix, channel, names) do
+  defp rewrite_jsons(
+         req,
+         fetcher,
+         base_url,
+         bucket,
+         src_prefix,
+         dst_prefix,
+         src_channel,
+         dst_channel,
+         names
+       ) do
     Enum.reduce_while(names, :ok, fn name, :ok ->
-      src_url = "#{base_url}/#{src_prefix}/#{channel}/#{name}"
+      src_url = "#{base_url}/#{src_prefix}/#{src_channel}/#{name}"
+
+      # Rewrite the full prefix/channel path first (covers every URL/remote_key),
+      # then any bare prefix leftovers, so production references point at
+      # dst_prefix/dst_channel.
+      rewritten =
+        fn body ->
+          body
+          |> to_string_body()
+          |> String.replace("#{src_prefix}/#{src_channel}", "#{dst_prefix}/#{dst_channel}")
+          |> String.replace(src_prefix, dst_prefix)
+        end
 
       with {:ok, body} <- fetcher.(src_url),
-           rewritten <- String.replace(to_string_body(body), src_prefix, dst_prefix),
            {:ok, %{status: status}} when status in 200..299 <-
-             Req.put(req, url: "/#{bucket}/#{dst_prefix}/#{channel}/#{name}", body: rewritten) do
+             Req.put(req,
+               url: "/#{bucket}/#{dst_prefix}/#{dst_channel}/#{name}",
+               body: rewritten.(body)
+             ) do
         {:cont, :ok}
       else
         error -> {:halt, {:error, {:rewrite_failed, name, error}}}
