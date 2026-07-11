@@ -7,11 +7,17 @@
 # boots a local dockerd even in remote mode, and that dind fails to start its
 # overlay2 storage on the k3s/containerd nodes (overlayfs "invalid argument"),
 # which broke every base build. buildctl talks to the remote buildkitd over
-# plain TCP (:1234); the daemon runs on a native amd64/arm64 node (so OTP's
-# prim_tty NIF does not crash the way it does under QEMU emulation) and does the
-# push internally (it resolves hub.defdo.ninja to the internal Harbor, so the
-# base's large rust layer does not hit Cloudflare's 413). The multi-arch index is
-# assembled with manifest-tool (no docker daemon).
+# plain TCP (:1234); the daemon runs on a native amd64/arm64 node — so OTP's
+# prim_tty NIF does not crash the way it does under QEMU emulation on an arm64
+# host building amd64.
+#
+# PUSH TARGET: the internal Harbor ClusterIP (10.43.231.228 = the harbor-registry
+# svc in nas-apps), NOT hub.defdo.ninja. buildkit resolves hub.defdo.ninja to
+# Cloudflare (it ignores hostAliases), and CF rejects the base's ~614MB rust
+# layer with 413. Pushing to the ClusterIP with registry.insecure stays on the
+# LAN (Harbor's cert is legacy-CN, no SAN) — same Harbor repo, so the image is
+# still pullable in-cluster as hub.defdo.ninja/defdo/tailwind-builder. The
+# multi-arch index is assembled with manifest-tool (no docker daemon).
 #
 # The base is self-contained (installs the toolchain: OTP/Elixir/node/pnpm/rust/
 # bun), so the build context is just this repo.
@@ -42,14 +48,14 @@ steps:
         from_secret: docker_password
     commands:
       - export DOCKER_CONFIG=/tmp/dockercfg && mkdir -p $DOCKER_CONFIG
-      - 'printf ''{"auths":{"hub.defdo.ninja":{"auth":"%s"}}}'' "$(printf "%s:%s" "$DOCKER_USERNAME" "$DOCKER_PASSWORD" | base64 -w0)" > $DOCKER_CONFIG/config.json'
+      - 'printf ''{"auths":{"10.43.231.228":{"auth":"%s"}}}'' "$(printf "%s:%s" "$DOCKER_USERNAME" "$DOCKER_PASSWORD" | base64 -w0)" > $DOCKER_CONFIG/config.json'
       - |
         buildctl --addr tcp://buildkit-amd64.defdo-ci.svc.cluster.local:1234 build \
           --frontend dockerfile.v0 \
           --local context=. \
           --local dockerfile=docker/tailwind-builder-v4 \
           --opt filename=Dockerfile \
-          --output type=image,name=hub.defdo.ninja/defdo/tailwind-builder:${CI_COMMIT_TAG}-amd64,push=true
+          --output type=image,name=10.43.231.228/defdo/tailwind-builder:${CI_COMMIT_TAG}-amd64,push=true,registry.insecure=true
 
   - name: build-arm64
     image: moby/buildkit:v0.16.0
@@ -60,14 +66,14 @@ steps:
         from_secret: docker_password
     commands:
       - export DOCKER_CONFIG=/tmp/dockercfg && mkdir -p $DOCKER_CONFIG
-      - 'printf ''{"auths":{"hub.defdo.ninja":{"auth":"%s"}}}'' "$(printf "%s:%s" "$DOCKER_USERNAME" "$DOCKER_PASSWORD" | base64 -w0)" > $DOCKER_CONFIG/config.json'
+      - 'printf ''{"auths":{"10.43.231.228":{"auth":"%s"}}}'' "$(printf "%s:%s" "$DOCKER_USERNAME" "$DOCKER_PASSWORD" | base64 -w0)" > $DOCKER_CONFIG/config.json'
       - |
         buildctl --addr tcp://buildkit-arm64.defdo-ci.svc.cluster.local:1234 build \
           --frontend dockerfile.v0 \
           --local context=. \
           --local dockerfile=docker/tailwind-builder-v4 \
           --opt filename=Dockerfile \
-          --output type=image,name=hub.defdo.ninja/defdo/tailwind-builder:${CI_COMMIT_TAG}-arm64,push=true
+          --output type=image,name=10.43.231.228/defdo/tailwind-builder:${CI_COMMIT_TAG}-arm64,push=true,registry.insecure=true
 
   - name: manifest
     image: mplatform/manifest-tool:alpine
@@ -82,8 +88,8 @@ steps:
           manifest-tool --username "$DOCKER_USERNAME" --password "$DOCKER_PASSWORD" --insecure \
             push from-args \
             --platforms linux/amd64,linux/arm64 \
-            --template hub.defdo.ninja/defdo/tailwind-builder:${CI_COMMIT_TAG}-ARCH \
-            --target hub.defdo.ninja/defdo/tailwind-builder:$TAG
+            --template 10.43.231.228/defdo/tailwind-builder:${CI_COMMIT_TAG}-ARCH \
+            --target 10.43.231.228/defdo/tailwind-builder:$TAG
         done
     depends_on:
       - build-amd64
