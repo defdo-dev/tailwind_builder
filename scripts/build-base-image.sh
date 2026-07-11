@@ -1,26 +1,37 @@
 #!/usr/bin/env bash
 # Build the tailwind-builder base (toolchain) image locally.
 #
-# The default `docker buildx` docker-container driver boots a buildkit container
-# that fails to mount nested overlayfs on many hosts ("failed to mount ...
-# overlay ... invalid argument"). Two working paths, same as CI:
+# TWO problems bite a local base-image build; both are solved here:
 #
-#   1. REMOTE buildkitd (preferred, what .woodpecker/docker-image.yml uses):
-#      set BUILDKIT_HOST_AMD64 / BUILDKIT_HOST_ARM64 to a buildkitd endpoint
-#      (e.g. tcp://127.0.0.1:1234 after `kubectl -n defdo-ci port-forward
-#      svc/buildkit-amd64 1234:1234`). The remote daemon does the build + push.
+#   A. The default docker-container buildx driver boots a buildkit container that
+#      fails to mount nested overlayfs ("overlay ... invalid argument"). Fix: the
+#      `native` snapshotter (copy, no overlay) — used automatically below.
 #
-#   2. Local docker-container driver with the `native` snapshotter (fallback),
-#      which copies instead of mounting overlay, avoiding the nested-overlay bug.
+#   B. The base has a large NEW layer (rust ~614MB). Pushing to hub.defdo.ninja
+#      goes through Cloudflare, which rejects bodies >~100MB with "413 Payload
+#      Too Large" (the remote in-cluster buildkitd ALSO resolves hub.defdo.ninja
+#      to Cloudflare, so it 413s too — the CI only escapes this for the *worker*
+#      image because same-repo base layers are skipped and only ~9MB is pushed).
+#      Fix: push straight to the INTERNAL Harbor IP (same registry, LAN, no CF):
+#
+#        REPO=192.168.13.209/defdo/tailwind-builder \
+#          scripts/build-base-image.sh 0.2.6 amd64
+#
+#      Requirements for the internal push (Harbor's cert CN is hub.defdo.ninja,
+#      not the IP, so TLS to the IP needs insecure-registries):
+#        - dockerd daemon.json: {"insecure-registries": ["192.168.13.209"]}  (restart docker)
+#        - docker login 192.168.13.209   (same Harbor creds)
+#      The image lands in the same Harbor repo, pullable in-cluster as
+#      hub.defdo.ninja/defdo/tailwind-builder:<tag>.
 #
 # Usage:
-#   scripts/build-base-image.sh <tag> [amd64|arm64]
-#   BUILDKIT_HOST_AMD64=tcp://127.0.0.1:1234 scripts/build-base-image.sh 0.2.6 amd64
+#   REPO=192.168.13.209/defdo/tailwind-builder scripts/build-base-image.sh <tag> [amd64|arm64]
 set -euo pipefail
 
 TAG="${1:?usage: build-base-image.sh <tag> [amd64|arm64]}"
 ARCH="${2:-amd64}"
-REPO="${REPO:-hub.defdo.ninja/defdo/tailwind-builder}"
+# Default to the INTERNAL Harbor IP to dodge Cloudflare's 413 on large layers.
+REPO="${REPO:-192.168.13.209/defdo/tailwind-builder}"
 DOCKERFILE="docker/tailwind-builder-v4/Dockerfile"
 PLATFORM="linux/${ARCH}"
 IMAGE="${REPO}:${TAG}-${ARCH}"
@@ -39,7 +50,15 @@ if [ -n "$ENDPOINT" ]; then
   echo ">> remote buildkitd driver: $ENDPOINT"
   docker buildx create --name "$BUILDER" --driver remote "$ENDPOINT" --use
 else
-  echo ">> no BUILDKIT_HOST_${ARCH^^} set — local docker-container driver (native snapshotter)"
+  echo ">> local docker-container driver (native snapshotter, no nested overlay)"
+  case "$REPO" in
+    hub.defdo.ninja/*)
+      echo "!! WARNING: REPO targets hub.defdo.ninja (Cloudflare). The base's ~614MB"
+      echo "!! layer will hit '413 Payload Too Large'. Push to the internal Harbor:"
+      echo "!!   REPO=192.168.13.209/defdo/tailwind-builder $0 $TAG $ARCH"
+      echo "!! (needs insecure-registries + docker login 192.168.13.209 — see header)"
+      ;;
+  esac
   docker buildx create --name "$BUILDER" --driver docker-container \
     --driver-opt env.BUILDKITD_FLAGS="--oci-worker-snapshotter=native" --use
 fi
