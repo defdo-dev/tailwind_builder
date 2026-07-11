@@ -1,87 +1,83 @@
 ---
-# Toolchain image build pipeline.
+# Toolchain (base) image build pipeline.
 #
-# Builds hub.defdo.ninja/defdo/tailwind-builder for linux/amd64 and
-# linux/arm64 using native remote BuildKit daemons — no QEMU emulation.
-# Rust/WASM compilation runs natively on each target arch.
+# Builds hub.defdo.ninja/defdo/tailwind-builder for linux/amd64 and linux/arm64
+# by driving the in-cluster native BuildKit daemons DIRECTLY with `buildctl` —
+# no docker-in-docker, no QEMU. The old `woodpeckerci/plugin-docker-buildx` step
+# boots a local dockerd even in remote mode, and that dind fails to start its
+# overlay2 storage on the k3s/containerd nodes (overlayfs "invalid argument"),
+# which broke every base build. buildctl talks to the remote buildkitd over
+# plain TCP (:1234); the daemon runs on a native amd64/arm64 node (so OTP's
+# prim_tty NIF does not crash the way it does under QEMU emulation) and does the
+# push internally (it resolves hub.defdo.ninja to the internal Harbor, so the
+# base's large rust layer does not hit Cloudflare's 413). The multi-arch index is
+# assembled with manifest-tool (no docker daemon).
+#
+# The base is self-contained (installs the toolchain: OTP/Elixir/node/pnpm/rust/
+# bun), so the build context is just this repo.
 #
 # Trigger: GitHub tag push (e.g. 0.1.0)
-#
-# Required secrets:
-#   buildkit_host_amd64   — BuildKit daemon address for linux/amd64 node
-#   buildkit_host_arm64   — BuildKit daemon address for linux/arm64 node
-#   docker_username       — hub.defdo.ninja login
-#   docker_password       — hub.defdo.ninja password
+# Required secrets: docker_username, docker_password
 
 when:
   - event: tag
 
+labels:
+  platform: linux/amd64
+
 steps:
   - name: build-amd64
-    image: woodpeckerci/plugin-docker-buildx
-    settings:
-      repo: hub.defdo.ninja/defdo/tailwind-builder
-      registry: hub.defdo.ninja
-      username:
+    image: moby/buildkit:v0.16.0
+    environment:
+      DOCKER_USERNAME:
         from_secret: docker_username
-      password:
+      DOCKER_PASSWORD:
         from_secret: docker_password
-      dockerfile: docker/tailwind-builder-v4/Dockerfile
-      platforms: linux/amd64
-      tags: "${CI_COMMIT_TAG}-amd64"
-      buildx_driver: remote
-      buildx_driver_options:
-        - "endpoint=${BUILDKIT_HOST_AMD64}"
-    secrets:
-      - source: buildkit_host_amd64
-        target: BUILDKIT_HOST_AMD64
+    commands:
+      - export DOCKER_CONFIG=/tmp/dockercfg && mkdir -p $DOCKER_CONFIG
+      - 'printf ''{"auths":{"hub.defdo.ninja":{"auth":"%s"}}}'' "$(printf "%s:%s" "$DOCKER_USERNAME" "$DOCKER_PASSWORD" | base64 -w0)" > $DOCKER_CONFIG/config.json'
+      - |
+        buildctl --addr tcp://buildkit-amd64.defdo-ci.svc.cluster.local:1234 build \
+          --frontend dockerfile.v0 \
+          --local context=. \
+          --local dockerfile=docker/tailwind-builder-v4 \
+          --opt filename=Dockerfile \
+          --output type=image,name=hub.defdo.ninja/defdo/tailwind-builder:${CI_COMMIT_TAG}-amd64,push=true
 
   - name: build-arm64
-    image: woodpeckerci/plugin-docker-buildx
-    settings:
-      repo: hub.defdo.ninja/defdo/tailwind-builder
-      registry: hub.defdo.ninja
-      username:
+    image: moby/buildkit:v0.16.0
+    environment:
+      DOCKER_USERNAME:
         from_secret: docker_username
-      password:
+      DOCKER_PASSWORD:
         from_secret: docker_password
-      dockerfile: docker/tailwind-builder-v4/Dockerfile
-      platforms: linux/arm64
-      tags: "${CI_COMMIT_TAG}-arm64"
-      buildx_driver: remote
-      buildx_driver_options:
-        - "endpoint=${BUILDKIT_HOST_ARM64}"
-    secrets:
-      - source: buildkit_host_arm64
-        target: BUILDKIT_HOST_ARM64
+    commands:
+      - export DOCKER_CONFIG=/tmp/dockercfg && mkdir -p $DOCKER_CONFIG
+      - 'printf ''{"auths":{"hub.defdo.ninja":{"auth":"%s"}}}'' "$(printf "%s:%s" "$DOCKER_USERNAME" "$DOCKER_PASSWORD" | base64 -w0)" > $DOCKER_CONFIG/config.json'
+      - |
+        buildctl --addr tcp://buildkit-arm64.defdo-ci.svc.cluster.local:1234 build \
+          --frontend dockerfile.v0 \
+          --local context=. \
+          --local dockerfile=docker/tailwind-builder-v4 \
+          --opt filename=Dockerfile \
+          --output type=image,name=hub.defdo.ninja/defdo/tailwind-builder:${CI_COMMIT_TAG}-arm64,push=true
 
-  - name: publish-manifest
-    image: woodpeckerci/plugin-docker-manifest
-    settings:
-      username:
+  - name: manifest
+    image: mplatform/manifest-tool:alpine
+    environment:
+      DOCKER_USERNAME:
         from_secret: docker_username
-      password:
+      DOCKER_PASSWORD:
         from_secret: docker_password
-      target: "hub.defdo.ninja/defdo/tailwind-builder:${CI_COMMIT_TAG}"
-      template: "hub.defdo.ninja/defdo/tailwind-builder:${CI_COMMIT_TAG}-ARCH"
-      platforms:
-        - linux/amd64
-        - linux/arm64
+    commands:
+      - |
+        for TAG in "${CI_COMMIT_TAG}" latest; do
+          manifest-tool --username "$DOCKER_USERNAME" --password "$DOCKER_PASSWORD" --insecure \
+            push from-args \
+            --platforms linux/amd64,linux/arm64 \
+            --template hub.defdo.ninja/defdo/tailwind-builder:${CI_COMMIT_TAG}-ARCH \
+            --target hub.defdo.ninja/defdo/tailwind-builder:$TAG
+        done
     depends_on:
       - build-amd64
       - build-arm64
-
-  - name: tag-latest
-    image: woodpeckerci/plugin-docker-manifest
-    settings:
-      username:
-        from_secret: docker_username
-      password:
-        from_secret: docker_password
-      target: "hub.defdo.ninja/defdo/tailwind-builder:latest"
-      template: "hub.defdo.ninja/defdo/tailwind-builder:${CI_COMMIT_TAG}-ARCH"
-      platforms:
-        - linux/amd64
-        - linux/arm64
-    depends_on:
-      - publish-manifest
