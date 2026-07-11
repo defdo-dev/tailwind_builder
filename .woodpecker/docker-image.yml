@@ -16,11 +16,18 @@
 # The base is self-contained (installs the toolchain: OTP/Elixir/node/pnpm/rust/
 # bun), so the build context is just this repo.
 #
-# Trigger: GitHub tag push (e.g. 0.1.0)
+# Trigger: a tag push that ACTUALLY changes the toolchain (this Dockerfile or
+# this pipeline). Plain code tags (0.2.x = Elixir changes) do NOT rebuild the
+# 614MB base — the worker image builds FROM the existing base:latest. Rebuilding
+# it on every tag was ~30min of wasted native BuildKit time per release.
 # Required secrets: docker_username, docker_password
 
 when:
   - event: tag
+    path:
+      include:
+        - "docker/tailwind-builder-v4/**"
+        - ".woodpecker/docker-image.yml"
 
 labels:
   platform: linux/amd64
