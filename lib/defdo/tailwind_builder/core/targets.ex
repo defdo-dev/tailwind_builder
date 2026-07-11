@@ -5,12 +5,25 @@ defmodule Defdo.TailwindBuilder.Core.Targets do
   artifact filenames.
   """
 
+  # `tier` classifies a target for release promotion:
+  #
+  #   * `:required` — the release cannot be promoted to prod unless this target
+  #     is published. These are the platforms defdo ships to production (k3s
+  #     amd64 + arm64) and develops on (Apple Silicon).
+  #   * `:optional` — nice-to-have coverage. A missing optional target is
+  #     surfaced in the UI but never blocks promotion.
+  #
+  # `tailwind_official` marks targets tailwindlabs ships on GitHub (linux
+  # x64/arm64/armv7, macOS x64/arm64, windows x64/arm64). The remaining targets
+  # (freebsd, android) are defdo-builder extras with no upstream artifact.
   @target_definitions [
     %{
       target_key: "linux-x64",
       legacy_target: "linux-x64",
       build_target: "x86_64-unknown-linux-gnu",
       artifact_name: "tailwindcss-linux-x64",
+      tier: :required,
+      tailwind_official: true,
       aliases: ["linux-x64", "x86_64-unknown-linux-gnu", "x86_64-unknown-linux-musl"]
     },
     %{
@@ -18,6 +31,8 @@ defmodule Defdo.TailwindBuilder.Core.Targets do
       legacy_target: "linux-arm64",
       build_target: "aarch64-unknown-linux-gnu",
       artifact_name: "tailwindcss-linux-arm64",
+      tier: :required,
+      tailwind_official: true,
       aliases: ["linux-arm64", "aarch64-unknown-linux-gnu", "aarch64-unknown-linux-musl"]
     },
     %{
@@ -25,6 +40,8 @@ defmodule Defdo.TailwindBuilder.Core.Targets do
       legacy_target: "linux-arm",
       build_target: "armv7-unknown-linux-gnueabihf",
       artifact_name: "tailwindcss-linux-arm",
+      tier: :optional,
+      tailwind_official: true,
       aliases: ["linux-arm", "armv7-unknown-linux-gnueabihf", "armv7-unknown-linux-musleabihf"]
     },
     %{
@@ -32,6 +49,8 @@ defmodule Defdo.TailwindBuilder.Core.Targets do
       legacy_target: "darwin-x64",
       build_target: "x86_64-apple-darwin",
       artifact_name: "tailwindcss-macos-x64",
+      tier: :optional,
+      tailwind_official: true,
       aliases: ["macos-x64", "darwin-x64", "x86_64-apple-darwin"]
     },
     %{
@@ -39,6 +58,8 @@ defmodule Defdo.TailwindBuilder.Core.Targets do
       legacy_target: "darwin-arm64",
       build_target: "aarch64-apple-darwin",
       artifact_name: "tailwindcss-macos-arm64",
+      tier: :required,
+      tailwind_official: true,
       aliases: ["macos-arm64", "darwin-arm64", "aarch64-apple-darwin"]
     },
     %{
@@ -46,6 +67,8 @@ defmodule Defdo.TailwindBuilder.Core.Targets do
       legacy_target: "win32-x64",
       build_target: "x86_64-pc-windows-msvc",
       artifact_name: "tailwindcss-windows-x64.exe",
+      tier: :optional,
+      tailwind_official: true,
       aliases: ["windows-x64", "win32-x64", "x86_64-pc-windows-msvc"]
     },
     %{
@@ -53,6 +76,8 @@ defmodule Defdo.TailwindBuilder.Core.Targets do
       legacy_target: "win32-arm64",
       build_target: "aarch64-pc-windows-msvc",
       artifact_name: "tailwindcss-windows-arm64.exe",
+      tier: :optional,
+      tailwind_official: true,
       aliases: ["windows-arm64", "win32-arm64", "aarch64-pc-windows-msvc"]
     },
     %{
@@ -60,6 +85,8 @@ defmodule Defdo.TailwindBuilder.Core.Targets do
       legacy_target: "freebsd-x64",
       build_target: "x86_64-unknown-freebsd",
       artifact_name: "tailwindcss-freebsd-x64",
+      tier: :optional,
+      tailwind_official: false,
       aliases: ["freebsd-x64", "x86_64-unknown-freebsd"]
     },
     %{
@@ -67,6 +94,8 @@ defmodule Defdo.TailwindBuilder.Core.Targets do
       legacy_target: "android-arm64",
       build_target: "aarch64-linux-android",
       artifact_name: "tailwindcss-android-arm64",
+      tier: :optional,
+      tailwind_official: false,
       aliases: ["android-arm64", "aarch64-linux-android"]
     },
     %{
@@ -74,6 +103,8 @@ defmodule Defdo.TailwindBuilder.Core.Targets do
       legacy_target: "android-arm",
       build_target: "armv7-linux-androideabi",
       artifact_name: "tailwindcss-android-arm",
+      tier: :optional,
+      tailwind_official: false,
       aliases: ["android-arm", "armv7-linux-androideabi"]
     }
   ]
@@ -103,10 +134,56 @@ defmodule Defdo.TailwindBuilder.Core.Targets do
            target_key: definition.target_key,
            legacy_target: definition.legacy_target,
            build_target: definition.build_target,
-           artifact_name: definition.artifact_name
+           artifact_name: definition.artifact_name,
+           tier: definition.tier,
+           tailwind_official: definition.tailwind_official
          }}
     end
   end
+
+  @doc """
+  Return every canonical target key in definition order.
+  """
+  def all_target_keys, do: Enum.map(@target_definitions, & &1.target_key)
+
+  @doc """
+  Return the canonical target keys tailwindlabs ships on GitHub (linux
+  x64/arm64/armv7, macOS x64/arm64, windows x64/arm64), in definition order.
+  """
+  def tailwind_target_keys do
+    for d <- @target_definitions, d.tailwind_official, do: d.target_key
+  end
+
+  @doc """
+  Return the target keys that must be published before a release can be
+  promoted to prod (`:required` tier), in definition order.
+  """
+  def required_target_keys do
+    for d <- @target_definitions, d.tier == :required, do: d.target_key
+  end
+
+  @doc """
+  Return the `:optional` tier target keys, in definition order.
+  """
+  def optional_target_keys do
+    for d <- @target_definitions, d.tier == :optional, do: d.target_key
+  end
+
+  @doc """
+  Return the promotion tier (`:required` | `:optional`) for a target, or
+  `nil` when the target is unknown.
+  """
+  def tier(target) do
+    case normalize(target) do
+      {:ok, normalized} -> normalized.tier
+      _ -> nil
+    end
+  end
+
+  @doc """
+  Return true when the target must be published for prod promotion.
+  """
+  def required?(target), do: tier(target) == :required
 
   @doc """
   Return the canonical product-facing target key.
