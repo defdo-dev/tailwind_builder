@@ -22,6 +22,7 @@ defmodule Defdo.TailwindBuilder.Builder do
   - `:version` - TailwindCSS version to compile
   - `:source_path` - Path to TailwindCSS source code
   - `:debug` - Enable debug mode
+  - `:timeout` - Maximum duration in milliseconds for each build command
   - `:validate_tools` - Whether to validate required tools
   """
   def compile(opts \\ []) do
@@ -62,12 +63,14 @@ defmodule Defdo.TailwindBuilder.Builder do
         :version,
         :source_path,
         :debug,
+        :timeout,
         :validate_tools
       ])
 
     version = opts[:version] || raise ArgumentError, "version is required"
     source_path = opts[:source_path] || raise ArgumentError, "source_path is required"
     debug = Keyword.get(opts, :debug, false)
+    timeout = Keyword.get(opts, :timeout, 900_000)
     validate_tools = Keyword.get(opts, :validate_tools, true)
 
     # Track build start
@@ -86,7 +89,7 @@ defmodule Defdo.TailwindBuilder.Builder do
          {:validate_paths, {:ok, paths}} <-
            {:validate_paths, validate_and_get_paths_with_telemetry(source_path, version)},
          {:compile, compilation_result} <-
-           {:compile, execute_compilation_with_telemetry(version, paths, debug)} do
+           {:compile, execute_compilation_with_telemetry(version, paths, debug, timeout)} do
       Logger.debug("Compilation result: #{inspect(compilation_result)}")
 
       end_time = System.monotonic_time()
@@ -400,7 +403,7 @@ defmodule Defdo.TailwindBuilder.Builder do
     result
   end
 
-  defp execute_compilation_with_telemetry(version, paths, debug) do
+  defp execute_compilation_with_telemetry(version, paths, debug, timeout) do
     start_time = System.monotonic_time()
     compilation_method = Core.get_compilation_method(version)
 
@@ -411,7 +414,7 @@ defmodule Defdo.TailwindBuilder.Builder do
       tailwind_root: paths.tailwind_root
     })
 
-    result = execute_compilation(version, paths, debug)
+    result = execute_compilation(version, paths, debug, timeout)
 
     end_time = System.monotonic_time()
     duration_ms = System.convert_time_unit(end_time - start_time, :native, :millisecond)
@@ -521,19 +524,19 @@ defmodule Defdo.TailwindBuilder.Builder do
       (is_nil(paths.standalone_root) or File.exists?(paths.standalone_root))
   end
 
-  defp execute_compilation(version, paths, debug) do
+  defp execute_compilation(version, paths, debug, timeout) do
     constraints = Core.get_version_constraints(version)
 
     case constraints.major_version do
-      :v3 -> compile_v3(paths, debug)
-      :v4 -> compile_v4(paths, debug, version)
-      :v5 -> compile_v5(paths, debug, version)
-      :v6 -> compile_v6(paths, debug, version)
+      :v3 -> compile_v3(paths, debug, timeout)
+      :v4 -> compile_v4(paths, debug, version, timeout)
+      :v5 -> compile_v5(paths, debug, version, timeout)
+      :v6 -> compile_v6(paths, debug, version, timeout)
       _ -> {:error, :unsupported_version}
     end
   end
 
-  defp compile_v3(paths, debug) do
+  defp compile_v3(paths, debug, timeout) do
     steps = [
       {"npm install (root)", "npm", ["install"], paths.tailwind_root},
       {"npm build (root)", "npm", ["run", "build"], paths.tailwind_root},
@@ -541,10 +544,10 @@ defmodule Defdo.TailwindBuilder.Builder do
       {"npm build (standalone)", "npm", ["run", "build"], paths.standalone_root}
     ]
 
-    execute_compilation_steps(steps, debug)
+    execute_compilation_steps(steps, debug, nil, timeout)
   end
 
-  defp compile_v4(paths, debug, version) do
+  defp compile_v4(paths, debug, version, timeout) do
     # TailwindCSS v4 uses pnpm workspace + Rust compilation (official method)
     Logger.info("Building TailwindCSS v4 using pnpm workspace + Rust (official method)")
 
@@ -573,10 +576,10 @@ defmodule Defdo.TailwindBuilder.Builder do
 
     steps = [install_step, oxide_build_step, workspace_build_step, standalone_build_step]
 
-    execute_compilation_steps(steps, debug, version)
+    execute_compilation_steps(steps, debug, version, timeout)
   end
 
-  defp compile_v5(paths, debug, version) do
+  defp compile_v5(paths, debug, version, timeout) do
     # TailwindCSS v5 - assume continued Rust-based approach
     Logger.info("Building TailwindCSS v5 using Rust/Cargo (future version)")
 
@@ -587,10 +590,10 @@ defmodule Defdo.TailwindBuilder.Builder do
       {"cargo build (release)", "cargo", cargo_args, paths.tailwind_root}
     ]
 
-    execute_compilation_steps(steps, debug, version)
+    execute_compilation_steps(steps, debug, version, timeout)
   end
 
-  defp compile_v6(paths, debug, version) do
+  defp compile_v6(paths, debug, version, timeout) do
     # TailwindCSS v6 - assume continued Rust-based approach
     Logger.info("Building TailwindCSS v6 using Rust/Cargo (future version)")
 
@@ -601,10 +604,10 @@ defmodule Defdo.TailwindBuilder.Builder do
       {"cargo build (release)", "cargo", cargo_args, paths.tailwind_root}
     ]
 
-    execute_compilation_steps(steps, debug, version)
+    execute_compilation_steps(steps, debug, version, timeout)
   end
 
-  defp execute_compilation_steps(steps, debug, version \\ nil) do
+  defp execute_compilation_steps(steps, debug, version, timeout) do
     # Get build context if available
     build_context = Process.get(:build_telemetry_context, %{})
 
@@ -622,7 +625,12 @@ defmodule Defdo.TailwindBuilder.Builder do
           telemetry_metadata
         )
 
-        case execute_build_command(command, args, cd: working_dir, debug: debug, version: version) do
+        case execute_build_command(command, args,
+               cd: working_dir,
+               debug: debug,
+               version: version,
+               timeout: timeout
+             ) do
           {:ok, _output} ->
             Logger.info("Completed step: #{step_name}")
 
