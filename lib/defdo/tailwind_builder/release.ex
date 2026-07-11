@@ -36,6 +36,7 @@ defmodule Defdo.TailwindBuilder.Release do
         :prefix,
         :storage_base_url,
         :debug,
+        :build_timeout,
         :validate_tools,
         :validate_binaries,
         :generate_manifest,
@@ -64,6 +65,7 @@ defmodule Defdo.TailwindBuilder.Release do
     source_path = Keyword.get(opts, :source_path, default_source_path(release_channel))
     plugins = Keyword.get(opts, :plugins, @default_plugins)
     debug = Keyword.get(opts, :debug, false)
+    build_timeout = Keyword.get(opts, :build_timeout, 1_800_000)
     validate_tools = Keyword.get(opts, :validate_tools, true)
     validate_binaries = Keyword.get(opts, :validate_binaries, true)
     generate_manifest = Keyword.get(opts, :generate_manifest, true)
@@ -117,6 +119,7 @@ defmodule Defdo.TailwindBuilder.Release do
               version: version,
               source_path: source_path,
               debug: debug,
+              timeout: build_timeout,
               validate_tools: validate_tools
             )},
          {:deploy, {:ok, deploy_result}} <-
