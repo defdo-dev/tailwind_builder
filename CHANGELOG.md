@@ -2,6 +2,16 @@
 
 ## [Unreleased]
 
+## [0.2.15]
+
+### Changed
+- Removed the unused private `asdf_exec/2` helper (dead code). This clears a
+  `mix compile --warnings-as-errors` warning that broke the stricter compile
+  gate of path-dependency consumers (e.g. `tailwind_builder_hub`).
+
+> Note: CHANGELOG entries for 0.2.1–0.2.14 were not backfilled; releases in that
+> range were tag-driven without changelog updates.
+
 ## [0.2.0]
 
 ### Added
