@@ -58,15 +58,6 @@ defmodule Defdo.TailwindBuilder.Dependencies do
     end
   end
 
-  # Ejecuta comandos a través de asdf cuando exista
-  defp asdf_exec(cmd, args) do
-    if is_installed?("asdf") do
-      System.cmd("asdf", ["exec", cmd | args])
-    else
-      System.cmd(cmd, args)
-    end
-  end
-
   defp latest_with_asdf!(name) do
     case System.cmd("asdf", ["latest", name]) do
       {out, 0} -> String.trim(out)
