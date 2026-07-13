@@ -2,6 +2,14 @@
 
 ## [Unreleased]
 
+## [0.2.16]
+
+### Added
+- Hex packaging: the library now publishes to the private `defdo` organization on
+  tag (package metadata, `VERSION` file, docs, `.github/workflows/publish_hex.yml`).
+  Consumers can depend on it via Hex (`{:tailwind_builder, "~> 0.2", organization:
+  "defdo"}`) instead of a local path.
+
 ## [0.2.15]
 
 ### Changed
