@@ -2,6 +2,15 @@
 
 ## [Unreleased]
 
+## [0.2.17]
+
+### Changed
+- Hex publishing moved from GitHub Actions to Woodpecker CI
+  (`.woodpecker/hex-publish.yml`, triggered on tag). Uses the global Woodpecker
+  `hex_api_key` / `hex_org_token` secrets. Removed the unused
+  `.github/workflows/publish_hex.yml`. First version actually published to the
+  private `defdo` Hex org.
+
 ## [0.2.16]
 
 ### Added

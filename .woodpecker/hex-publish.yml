@@ -1,0 +1,60 @@
+---
+# Hex publish pipeline — publishes the tailwind_builder ELIXIR LIBRARY to the
+# private `defdo` Hex organization on tag push.
+#
+# This is distinct from the release-*/canary pipelines, which build the Tailwind
+# CLI + DaisyUI standalone BINARIES and upload them to R2. This one publishes the
+# mix package so consumers can depend on it via Hex instead of a local path.
+#
+# Secrets (global Woodpecker secrets, available on `tag` events):
+#   hex_api_key    — Hex user API key with publish rights on the defdo org
+#   hex_org_token  — Hex org read/auth key for the private `defdo` repo
+#
+# Trigger: pushing a version tag (e.g. `0.2.17`). The version comes from the
+# VERSION file via mix.exs, so the tag must match it.
+
+when:
+  - event: tag
+
+steps:
+  - name: validate
+    image: hub.defdo.ninja/defdo/tailwind-builder:latest
+    environment:
+      HEX_API_KEY:
+        from_secret: hex_api_key
+      HEX_ORG_TOKEN:
+        from_secret: hex_org_token
+    commands:
+      - |
+        set -e
+        HEX_ORG_NAME="defdo"
+        mix local.hex --force
+        if [ -n "$HEX_ORG_TOKEN" ]; then
+          mix hex.organization auth "$HEX_ORG_NAME" --key "$HEX_ORG_TOKEN"
+        fi
+        mix deps.get
+        mix compile --warnings-as-errors
+        mix hex.build
+
+  - name: hex-publish
+    image: hub.defdo.ninja/defdo/tailwind-builder:latest
+    depends_on: [validate]
+    environment:
+      HEX_API_KEY:
+        from_secret: hex_api_key
+      HEX_ORG_TOKEN:
+        from_secret: hex_org_token
+    commands:
+      - |
+        set -e
+        HEX_ORG_NAME="defdo"
+        if [ -z "$HEX_API_KEY" ]; then
+          echo "ERROR: HEX_API_KEY is required to publish"
+          exit 1
+        fi
+        mix local.hex --force
+        if [ -n "$HEX_ORG_TOKEN" ]; then
+          mix hex.organization auth "$HEX_ORG_NAME" --key "$HEX_ORG_TOKEN"
+        fi
+        mix deps.get
+        mix hex.publish --yes
