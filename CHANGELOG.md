@@ -2,6 +2,13 @@
 
 ## [Unreleased]
 
+## [0.2.19]
+
+### Changed
+- Bump `req` to `~> 0.6` (0.6.3) and `req_s3` to `~> 0.2.4`. This clears the
+  `req` 0.5.18 decompression-bomb DoS advisory (CVE-2026-49755, HIGH) for
+  consumers — the previous `~> 0.5.15` pin held them below the fixed 0.6.x line.
+
 ## [0.2.18]
 
 ### Fixed

@@ -56,8 +56,8 @@ defmodule Defdo.TailwindBuilder.MixProject do
       {:castore, ">= 0.0.0"},
       {:mox, "~> 1.0"},
       {:mock, "~> 0.3", only: :test},
-      {:req, "~> 0.5.15"},
-      {:req_s3, "~> 0.2.3"},
+      {:req, "~> 0.6"},
+      {:req_s3, "~> 0.2.4"},
       {:jason, "~> 1.4"},
       {:ex_doc, "~> 0.34", only: :dev, runtime: false}
     ]
