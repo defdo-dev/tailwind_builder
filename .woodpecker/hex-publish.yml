@@ -13,28 +13,23 @@
 # Trigger: pushing a version tag (e.g. `0.2.17`). The version comes from the
 # VERSION file via mix.exs, so the tag must match it.
 #
-# Pinned to the darwin/arm64 exec agent (mac-mini-builder) — the local backend
-# host that has the Elixir/Mix toolchain in PATH, same as release-macos-arm64.yml.
-# Without this label the tag event can land on an agent without `mix`.
+# Runs on the DOCKER/kubernetes agent (`platform: linux/amd64`), NOT the
+# darwin/arm64 exec agent — that mac host is reserved for native macOS binary
+# builds (release-macos-arm64.yml). Publishing a pure-Elixir library needs only a
+# container with Elixir + Mix, so it belongs on the k8s agent. The label is
+# REQUIRED: without it the tag job can land on the local (exec) agent, which tries
+# to run the `image:` string as a host binary and dies with
+# `exec: "<image>": executable file not found`.
 
 labels:
-  platform: darwin/arm64
+  platform: linux/amd64
 
 when:
   - event: tag
 
-# Woodpecker LOCAL backend: `image:` names the SHELL used to run `commands`
-# (bash), NOT a container — same convention as the release pipelines (see
-# release-macos-arm64.yml). The exec agent host already provides the toolchain
-# (Elixir/OTP/Mix) in PATH, and publishing needs only mix + hex.
-#
-# Passing a container image name here (e.g. `tailwind-builder:latest` or
-# `elixir:1.19`) makes the local backend try to exec the image string as a host
-# binary and fails with `exec: "<image>": executable file not found` /
-# `no such file`. That is what broke the earlier code-tag publishes.
 steps:
   - name: validate
-    image: bash
+    image: elixir:1.19.5
     environment:
       HEX_API_KEY:
         from_secret: hex_api_key
@@ -53,7 +48,7 @@ steps:
         mix hex.build
 
   - name: hex-publish
-    image: bash
+    image: elixir:1.19.5
     depends_on: [validate]
     environment:
       HEX_API_KEY:
