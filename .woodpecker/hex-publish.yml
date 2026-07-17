@@ -12,22 +12,29 @@
 #
 # Trigger: pushing a version tag (e.g. `0.2.17`). The version comes from the
 # VERSION file via mix.exs, so the tag must match it.
+#
+# Pinned to the darwin/arm64 exec agent (mac-mini-builder) — the local backend
+# host that has the Elixir/Mix toolchain in PATH, same as release-macos-arm64.yml.
+# Without this label the tag event can land on an agent without `mix`.
+
+labels:
+  platform: darwin/arm64
 
 when:
   - event: tag
 
-# Publishing needs only Elixir + Mix + Hex, so run on the public `elixir:1.19`
-# image instead of the internal `tailwind-builder:latest` toolchain image. That
-# `:latest` tag is only rebuilt on toolchain-change tags and can be GC'd from the
-# registry, which broke code-tag publishes with
-# `exec: "...tailwind-builder:latest": no such file`.
+# Woodpecker LOCAL backend: `image:` names the SHELL used to run `commands`
+# (bash), NOT a container — same convention as the release pipelines (see
+# release-macos-arm64.yml). The exec agent host already provides the toolchain
+# (Elixir/OTP/Mix) in PATH, and publishing needs only mix + hex.
 #
-# Use the NON-slim image on purpose: `elixir:1.19-slim` ships without
-# `ca-certificates`, so `mix deps.get` / `mix hex.build` crash on HTTPS with
-# `:pubkey_os_cacerts` `:no_cacerts_found`. The full image bundles CA certs + git.
+# Passing a container image name here (e.g. `tailwind-builder:latest` or
+# `elixir:1.19`) makes the local backend try to exec the image string as a host
+# binary and fails with `exec: "<image>": executable file not found` /
+# `no such file`. That is what broke the earlier code-tag publishes.
 steps:
   - name: validate
-    image: elixir:1.19
+    image: bash
     environment:
       HEX_API_KEY:
         from_secret: hex_api_key
@@ -46,7 +53,7 @@ steps:
         mix hex.build
 
   - name: hex-publish
-    image: elixir:1.19
+    image: bash
     depends_on: [validate]
     environment:
       HEX_API_KEY:
