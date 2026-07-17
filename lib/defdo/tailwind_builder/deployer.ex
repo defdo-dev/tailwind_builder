@@ -572,7 +572,12 @@ defmodule Defdo.TailwindBuilder.Deployer do
 
           case smoke_test_binary(binary_path, probe_opts) do
             {:ok, result} ->
-              %{plugin: package, status: :verified, expected: expected, output_bytes: result.output_bytes}
+              %{
+                plugin: package,
+                status: :verified,
+                expected: expected,
+                output_bytes: result.output_bytes
+              }
 
             {:error, reason} ->
               %{plugin: package, status: :failed, expected: expected, reason: inspect(reason)}
@@ -1089,8 +1094,11 @@ defmodule Defdo.TailwindBuilder.Deployer do
               if packages == [] do
                 # No plugins declared — fall back to the base Tailwind probe.
                 case smoke_test_binary(binary_info.path, opts) do
-                  {:ok, _} -> [%{plugin: "tailwindcss", status: :verified}]
-                  {:error, reason} -> [%{plugin: "tailwindcss", status: :failed, reason: inspect(reason)}]
+                  {:ok, _} ->
+                    [%{plugin: "tailwindcss", status: :verified}]
+
+                  {:error, reason} ->
+                    [%{plugin: "tailwindcss", status: :failed, reason: inspect(reason)}]
                 end
               else
                 smoke_test_plugins(binary_info.path, packages, opts)
@@ -1102,9 +1110,7 @@ defmodule Defdo.TailwindBuilder.Deployer do
             %{target_key: target_key, checks: checks}
           end)
 
-        Logger.info(
-          "Smoke test plugin checks: #{inspect(Enum.flat_map(results, & &1.checks))}"
-        )
+        Logger.info("Smoke test plugin checks: #{inspect(Enum.flat_map(results, & &1.checks))}")
 
         # Fail-closed: any plugin whose registered probe did not generate its
         # marker fails the whole deploy (the binary is never published).
@@ -1565,7 +1571,7 @@ defmodule Defdo.TailwindBuilder.Deployer do
     region = storage_config[:region] || "auto"
 
     Req.new(base_url: "https://#{host}", receive_timeout: resolve_upload_timeout())
-    |> ReqS3.attach(
+    |> Defdo.S3.attach(
       aws_sigv4: [
         access_key_id: access_key_id,
         secret_access_key: secret_access_key,

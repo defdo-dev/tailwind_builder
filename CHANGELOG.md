@@ -2,6 +2,30 @@
 
 ## [Unreleased]
 
+## [0.2.20]
+
+### Changed
+- Replace the third-party `req_s3` with the internal `defdo_s3` (`Defdo.S3.attach/2`,
+  drop-in for `ReqS3.attach/2`) for R2/S3 uploads in `Deployer`. This removes an
+  external dependency we do not control from the tree and lets us govern the `req`
+  version constraint ourselves (`defdo_s3` already allows `req ~> 0.6`). Combined
+  with 0.2.19's `req ~> 0.6` bump, this clears the `req` DoS advisory
+  (CVE-2026-49755, HIGH) for consumers.
+
+### Fixed
+- Hex publish CI: run `.woodpecker/hex-publish.yml` on the public `elixir:1.19-slim`
+  image instead of the internal `tailwind-builder:latest` toolchain image. `:latest`
+  is only rebuilt on toolchain-change tags and can be evicted from the registry,
+  which broke code-tag publishes (`exec: "...tailwind-builder:latest": no such
+  file`). Publishing needs only Elixir + Mix + Hex, so it no longer depends on that
+  image. (The binary build pipelines still require the toolchain image.)
+
+### Added
+- Pre-commit hook (`.githooks/pre-commit`, install with `mix hooks.install`):
+  `mix format --check-formatted` on staged files + `mix credo diff` gating only
+  NEW issues since HEAD (pre-existing debt does not block). Adds `credo` (dev/test)
+  and a `mix check` alias for the full-tree gate.
+
 ## [0.2.19]
 
 ### Changed

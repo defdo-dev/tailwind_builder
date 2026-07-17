@@ -1,0 +1,28 @@
+#!/usr/bin/env bash
+# Defdo pre-commit hook: keep the tree formatted and credo-clean.
+#
+# Scope: only the Elixir files staged for THIS commit — so pre-existing issues
+# elsewhere never block an unrelated commit, and a fresh clone with un-fetched
+# deps degrades gracefully instead of hard-failing.
+#
+# Install (once per clone): `mix hooks.install` (or `git config core.hooksPath .githooks`).
+set -euo pipefail
+
+staged=$(git diff --cached --name-only --diff-filter=ACM -- '*.ex' '*.exs' || true)
+[ -z "$staged" ] && exit 0
+
+# shellcheck disable=SC2086
+echo "==> mix format --check-formatted"
+if ! mix format --check-formatted $staged; then
+  echo "✗ Unformatted files. Run: mix format" >&2
+  exit 1
+fi
+
+if mix help credo >/dev/null 2>&1; then
+  # Gate on NEW issues only (vs the last commit), so pre-existing credo debt
+  # never blocks an unrelated commit. Run `mix credo --strict` to see the full list.
+  echo "==> mix credo diff (no new issues since HEAD)"
+  mix credo diff --from-git-ref HEAD --strict
+else
+  echo "… credo not available (run mix deps.get) — skipping credo" >&2
+fi

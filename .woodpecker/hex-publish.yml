@@ -16,9 +16,15 @@
 when:
   - event: tag
 
+# Publishing needs only Elixir + Mix + Hex, so run on the public `elixir:1.19-slim`
+# image (same Elixir the toolchain base is built FROM) instead of the internal
+# `tailwind-builder:latest` toolchain image. That `:latest` tag is only rebuilt on
+# toolchain-change tags and can be GC'd from the registry, which previously broke
+# code-tag publishes with `exec: "...tailwind-builder:latest": no such file`.
+# Decoupling here means a plain code tag can publish to Hex without the heavy image.
 steps:
   - name: validate
-    image: hub.defdo.ninja/defdo/tailwind-builder:latest
+    image: elixir:1.19-slim
     environment:
       HEX_API_KEY:
         from_secret: hex_api_key
@@ -37,7 +43,7 @@ steps:
         mix hex.build
 
   - name: hex-publish
-    image: hub.defdo.ninja/defdo/tailwind-builder:latest
+    image: elixir:1.19-slim
     depends_on: [validate]
     environment:
       HEX_API_KEY:
