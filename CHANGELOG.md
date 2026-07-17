@@ -2,6 +2,18 @@
 
 ## [Unreleased]
 
+## [0.2.21]
+
+### Changed
+- Internal refactor to resolve all `mix credo --strict` findings (89: 1 warning,
+  36 refactoring, 34 readability, 18 design) across 30 lib modules. Refactor-only,
+  no behavior change: extracted private helpers, reduced nesting/complexity, and
+  renamed predicate functions to drop the `is_` prefix
+  (`technically_possible?/2`, `executable?/1`) — the old names
+  (`is_technically_possible?/2`, `is_executable?/1`) are preserved as
+  `defdelegate`, so the public API is unchanged. Compile `--warnings-as-errors`
+  clean, 288 tests still green.
+
 ## [0.2.20]
 
 ### Changed
