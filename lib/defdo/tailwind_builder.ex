@@ -19,13 +19,13 @@ defmodule Defdo.TailwindBuilder do
 
   # Import all modules from the new architecture
   alias Defdo.TailwindBuilder.{
+    Builder,
+    DefaultConfigProvider,
+    Deployer,
     Downloader,
     PluginManager,
-    Builder,
-    Deployer,
     Release,
-    VersionFetcher,
-    DefaultConfigProvider
+    VersionFetcher
   }
 
   @tailwind_latest "4.1.14"

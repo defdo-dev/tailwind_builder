@@ -158,11 +158,9 @@ defmodule Defdo.TailwindBuilder.DefaultConfigProvider do
   # Funciones auxiliares privadas
 
   defp version_is_too_old?(version) do
-    try do
-      # Considerar versiones anteriores a 3.0.0 como obsoletas
-      Version.compare(version, "3.0.0") == :lt
-    rescue
-      Version.InvalidVersionError -> false
-    end
+    # Considerar versiones anteriores a 3.0.0 como obsoletas
+    Version.compare(version, "3.0.0") == :lt
+  rescue
+    Version.InvalidVersionError -> false
   end
 end

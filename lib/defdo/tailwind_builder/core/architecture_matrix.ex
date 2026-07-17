@@ -72,25 +72,26 @@ defmodule Defdo.TailwindBuilder.Core.ArchitectureMatrix do
   """
   def get_host_architecture do
     arch = :erlang.system_info(:system_architecture) |> to_string()
+    "#{host_os()}-#{host_cpu(arch)}"
+  end
 
-    os =
-      case :os.type() do
-        {:unix, :darwin} -> "darwin"
-        {:unix, :linux} -> "linux"
-        {:unix, :freebsd} -> "freebsd"
-        {:win32, _} -> "win32"
-        _ -> "unknown"
-      end
+  defp host_os do
+    case :os.type() do
+      {:unix, :darwin} -> "darwin"
+      {:unix, :linux} -> "linux"
+      {:unix, :freebsd} -> "freebsd"
+      {:win32, _} -> "win32"
+      _ -> "unknown"
+    end
+  end
 
-    cpu =
-      cond do
-        arch =~ "x86_64" or arch =~ "amd64" -> "x64"
-        arch =~ "aarch64" or arch =~ "arm64" -> "arm64"
-        arch =~ "arm" -> "arm"
-        true -> "unknown"
-      end
-
-    "#{os}-#{cpu}"
+  defp host_cpu(arch) do
+    cond do
+      arch =~ "x86_64" or arch =~ "amd64" -> "x64"
+      arch =~ "aarch64" or arch =~ "arm64" -> "arm64"
+      arch =~ "arm" -> "arm"
+      true -> "unknown"
+    end
   end
 
   @doc """

@@ -1,8 +1,8 @@
 defmodule Defdo.TailwindBuilder.DeployerTest do
   use ExUnit.Case, async: true
 
-  alias Defdo.TailwindBuilder.Deployer
   alias Defdo.TailwindBuilder.Core.{ArchitectureMatrix, Targets}
+  alias Defdo.TailwindBuilder.Deployer
 
   defp temp_dir(prefix) do
     path = Path.join(System.tmp_dir!(), "#{prefix}_#{System.unique_integer([:positive])}")

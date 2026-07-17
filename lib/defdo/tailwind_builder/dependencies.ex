@@ -25,7 +25,7 @@ defmodule Defdo.TailwindBuilder.Dependencies do
   }
 
   defp asdf_version do
-    if is_installed?("asdf") do
+    if installed?("asdf") do
       {out, _} = System.cmd("asdf", ["--version"])
       # Ejemplos de out:
       # "v0.17.0 (revision ...)"
@@ -139,13 +139,13 @@ defmodule Defdo.TailwindBuilder.Dependencies do
   """
   def check_system_dependencies do
     %{
-      node: is_installed?("node"),
-      npm: is_installed?("npm"),
-      pnpm: is_installed?("pnpm"),
-      rust: is_installed?("cargo"),
-      rustup: is_installed?("rustup"),
-      git: is_installed?("git"),
-      bun: is_installed?("bun"),
+      node: installed?("node"),
+      npm: installed?("npm"),
+      pnpm: installed?("pnpm"),
+      rust: installed?("cargo"),
+      rustup: installed?("rustup"),
+      git: installed?("git"),
+      bun: installed?("bun"),
       rust_targets: get_installed_rust_targets()
     }
   end
@@ -155,7 +155,7 @@ defmodule Defdo.TailwindBuilder.Dependencies do
     cwd = File.cwd!()
 
     cond do
-      is_installed?("asdf") ->
+      installed?("asdf") ->
         Logger.info("Using asdf to install dependencies")
 
         System.cmd("asdf", ["plugin", "add", "nodejs"], into: IO.stream())
@@ -182,7 +182,7 @@ defmodule Defdo.TailwindBuilder.Dependencies do
         # Usa el Node de asdf
         System.cmd("asdf", ["exec", "npm", "install", "-g", "pnpm"], into: IO.stream())
 
-      is_installed?("brew") ->
+      installed?("brew") ->
         Logger.info("Using homebrew to install dependencies")
         System.cmd("brew", ["install", "node"], into: IO.stream())
         System.cmd("brew", ["install", "rust"], into: IO.stream())
@@ -270,13 +270,13 @@ defmodule Defdo.TailwindBuilder.Dependencies do
     Logger.info("Uninstalling build dependencies...")
 
     # Try to uninstall pnpm first while npm is still available
-    if is_installed?("npm") do
+    if installed?("npm") do
       Logger.info("Removing pnpm...")
       System.cmd("npm", ["uninstall", "-g", "pnpm"], into: IO.stream())
     end
 
     cond do
-      is_installed?("asdf") ->
+      installed?("asdf") ->
         Logger.info("Uninstalling via asdf")
 
         # Check if plugins exist before trying to uninstall
@@ -298,7 +298,7 @@ defmodule Defdo.TailwindBuilder.Dependencies do
           System.cmd("asdf", ["plugin", "remove", "bun"], into: IO.stream())
         end
 
-      is_installed?("brew") ->
+      installed?("brew") ->
         Logger.info("Uninstalling via homebrew")
         System.cmd("brew", ["uninstall", "node"], into: IO.stream())
         System.cmd("brew", ["uninstall", "rust"], into: IO.stream())
@@ -338,10 +338,7 @@ defmodule Defdo.TailwindBuilder.Dependencies do
   end
 
   defp default_targets(version) when is_binary(version) do
-    cond do
-      String.starts_with?(version, "4.") -> @required_rust_targets
-      true -> []
-    end
+    if String.starts_with?(version, "4."), do: @required_rust_targets, else: []
   end
 
   @doc """
@@ -379,7 +376,7 @@ defmodule Defdo.TailwindBuilder.Dependencies do
         Missing required Rust targets for TailwindCSS #{version}: #{Enum.join(missing_targets, ", ")}
 
         Install them with:
-        #{Enum.map(missing_targets, fn target -> "rustup target add #{target}" end) |> Enum.join("\n")}
+        #{Enum.map_join(missing_targets, "\n", fn target -> "rustup target add #{target}" end)}
 
         Or run: Defdo.TailwindBuilder.Dependencies.install_missing_rust_targets!(#{inspect(missing_targets)})
         """
@@ -387,14 +384,14 @@ defmodule Defdo.TailwindBuilder.Dependencies do
   end
 
   defp missing_tools do
-    Enum.reject(@required_tools, &is_installed?/1)
+    Enum.reject(@required_tools, &installed?/1)
   end
 
   defp missing_tools_for(required) do
-    Enum.reject(required, &is_installed?/1)
+    Enum.reject(required, &installed?/1)
   end
 
-  defp is_installed?(program) do
+  defp installed?(program) do
     case System.find_executable(program) do
       nil ->
         false

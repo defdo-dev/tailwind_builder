@@ -5,6 +5,8 @@ defmodule Defdo.TailwindBuilder.Application do
 
   use Application
 
+  alias Defdo.TailwindBuilder.Metrics
+
   @impl true
   def start(_type, _args) do
     children = [
@@ -37,7 +39,7 @@ defmodule Defdo.TailwindBuilder.Application do
   end
 
   def handle_info(:collect_system_metrics, state) do
-    Defdo.TailwindBuilder.Metrics.record_resource_metrics()
+    Metrics.record_resource_metrics()
 
     # Schedule next collection
     Process.send_after(self(), :collect_system_metrics, 30_000)

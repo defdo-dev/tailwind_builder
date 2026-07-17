@@ -9,13 +9,12 @@ defmodule Defdo.TailwindBuilder.Core.TechnicalConstraints do
   Business policies are configurable rules that may change over time.
   """
 
-  alias Defdo.TailwindBuilder.Core.Capabilities
-  alias Defdo.TailwindBuilder.Core.{ArchitectureMatrix, Targets}
+  alias Defdo.TailwindBuilder.Core.{ArchitectureMatrix, Capabilities, Targets}
 
   @doc """
   Check if a technical operation is possible (not whether it's allowed)
   """
-  def is_technically_possible?(operation, params) do
+  def technically_possible?(operation, params) do
     case operation do
       :cross_compile -> can_cross_compile?(params[:version], params[:target_arch])
       :compile_version -> can_compile_version?(params[:version])
@@ -24,6 +23,13 @@ defmodule Defdo.TailwindBuilder.Core.TechnicalConstraints do
       _ -> {:error, :unknown_operation}
     end
   end
+
+  @doc """
+  Deprecated name kept for backwards compatibility. Use `technically_possible?/2`.
+  """
+  defdelegate is_technically_possible?(operation, params),
+    to: __MODULE__,
+    as: :technically_possible?
 
   @doc """
   Get technical requirements for an operation

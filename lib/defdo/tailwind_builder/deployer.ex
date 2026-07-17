@@ -416,7 +416,7 @@ defmodule Defdo.TailwindBuilder.Deployer do
       size_mb: Float.round(stat.size / (1024 * 1024), 2),
       modified: stat.mtime,
       architecture: extract_architecture_from_filename(Path.basename(file_path)),
-      executable: is_executable?(file_path)
+      executable: executable?(file_path)
     }
   end
 
@@ -563,27 +563,31 @@ defmodule Defdo.TailwindBuilder.Deployer do
         nil ->
           %{plugin: package, status: :unverified}
 
-        %{content: content, expected: expected} ->
-          probe_opts =
-            opts
-            |> Keyword.put(:input_css, PluginProbes.input_css(package))
-            |> Keyword.put(:content_html, "<div>#{content}</div>")
-            |> Keyword.put(:expected_patterns, expected)
-
-          case smoke_test_binary(binary_path, probe_opts) do
-            {:ok, result} ->
-              %{
-                plugin: package,
-                status: :verified,
-                expected: expected,
-                output_bytes: result.output_bytes
-              }
-
-            {:error, reason} ->
-              %{plugin: package, status: :failed, expected: expected, reason: inspect(reason)}
-          end
+        probe ->
+          run_plugin_probe(binary_path, package, probe, opts)
       end
     end)
+  end
+
+  defp run_plugin_probe(binary_path, package, %{content: content, expected: expected}, opts) do
+    probe_opts =
+      opts
+      |> Keyword.put(:input_css, PluginProbes.input_css(package))
+      |> Keyword.put(:content_html, "<div>#{content}</div>")
+      |> Keyword.put(:expected_patterns, expected)
+
+    case smoke_test_binary(binary_path, probe_opts) do
+      {:ok, result} ->
+        %{
+          plugin: package,
+          status: :verified,
+          expected: expected,
+          output_bytes: result.output_bytes
+        }
+
+      {:error, reason} ->
+        %{plugin: package, status: :failed, expected: expected, reason: inspect(reason)}
+    end
   end
 
   @doc """
@@ -620,7 +624,7 @@ defmodule Defdo.TailwindBuilder.Deployer do
   @doc """
   Verifica si un archivo es ejecutable
   """
-  def is_executable?(file_path) do
+  def executable?(file_path) do
     case File.stat(file_path) do
       {:ok, %{mode: mode}} ->
         # Verificar si tiene permisos de ejecución
@@ -631,6 +635,11 @@ defmodule Defdo.TailwindBuilder.Deployer do
         false
     end
   end
+
+  @doc """
+  Deprecated name kept for backwards compatibility. Use `executable?/1`.
+  """
+  defdelegate is_executable?(file_path), to: __MODULE__, as: :executable?
 
   # Funciones privadas
 
@@ -956,24 +965,26 @@ defmodule Defdo.TailwindBuilder.Deployer do
       error: nil
     }
 
-    cond do
-      is_nil(url) ->
-        %{result | error: {:missing_storage_base_url, nil}}
+    if is_nil(url) do
+      %{result | error: {:missing_storage_base_url, nil}}
+    else
+      verify_fetched(result, expected, url, opts, fetcher)
+    end
+  end
 
-      true ->
-        case fetcher.(url) do
-          {:ok, body} ->
-            actual = sha256_for_bytes(body)
+  defp verify_fetched(result, expected, url, opts, fetcher) do
+    case fetcher.(url) do
+      {:ok, body} ->
+        actual = sha256_for_bytes(body)
 
-            if actual == expected do
-              maybe_smoke_verify(%{result | status: :verified, actual_sha256: actual}, body, opts)
-            else
-              %{result | status: :mismatch, actual_sha256: actual}
-            end
-
-          {:error, reason} ->
-            %{result | error: reason}
+        if actual == expected do
+          maybe_smoke_verify(%{result | status: :verified, actual_sha256: actual}, body, opts)
+        else
+          %{result | status: :mismatch, actual_sha256: actual}
         end
+
+      {:error, reason} ->
+        %{result | error: reason}
     end
   end
 
@@ -1086,51 +1097,7 @@ defmodule Defdo.TailwindBuilder.Deployer do
         {:ok, %{tested: 0, skipped: length(binaries), results: []}}
 
       String.starts_with?(version, "4.") or Keyword.has_key?(opts, :input_css) ->
-        packages = plugin_packages(Keyword.get(opts, :plugin_set, []))
-
-        results =
-          Enum.map(runnable_binaries, fn binary_info ->
-            checks =
-              if packages == [] do
-                # No plugins declared — fall back to the base Tailwind probe.
-                case smoke_test_binary(binary_info.path, opts) do
-                  {:ok, _} ->
-                    [%{plugin: "tailwindcss", status: :verified}]
-
-                  {:error, reason} ->
-                    [%{plugin: "tailwindcss", status: :failed, reason: inspect(reason)}]
-                end
-              else
-                smoke_test_plugins(binary_info.path, packages, opts)
-              end
-
-            # Manifest file entries are keyed by target_key (== architecture here);
-            # binary_info exposes :architecture, so fall back to it.
-            target_key = Map.get(binary_info, :target_key) || Map.get(binary_info, :architecture)
-            %{target_key: target_key, checks: checks}
-          end)
-
-        Logger.info("Smoke test plugin checks: #{inspect(Enum.flat_map(results, & &1.checks))}")
-
-        # Fail-closed: any plugin whose registered probe did not generate its
-        # marker fails the whole deploy (the binary is never published).
-        failures =
-          results
-          |> Enum.flat_map(& &1.checks)
-          |> Enum.filter(&(&1.status == :failed))
-
-        case failures do
-          [] ->
-            {:ok,
-             %{
-               tested: length(runnable_binaries),
-               skipped: length(binaries) - length(runnable_binaries),
-               results: results
-             }}
-
-          _ ->
-            {:error, {:smoke_test_failed, failures}}
-        end
+        smoke_test_runnable_binaries(runnable_binaries, binaries, opts)
 
       true ->
         {:ok,
@@ -1140,6 +1107,59 @@ defmodule Defdo.TailwindBuilder.Deployer do
            results: [],
            reason: :no_default_smoke_test_for_version
          }}
+    end
+  end
+
+  defp smoke_test_runnable_binaries(runnable_binaries, binaries, opts) do
+    packages = plugin_packages(Keyword.get(opts, :plugin_set, []))
+
+    results = Enum.map(runnable_binaries, &smoke_test_one_binary(&1, packages, opts))
+
+    Logger.info("Smoke test plugin checks: #{inspect(Enum.flat_map(results, & &1.checks))}")
+
+    # Fail-closed: any plugin whose registered probe did not generate its
+    # marker fails the whole deploy (the binary is never published).
+    failures =
+      results
+      |> Enum.flat_map(& &1.checks)
+      |> Enum.filter(&(&1.status == :failed))
+
+    case failures do
+      [] ->
+        {:ok,
+         %{
+           tested: length(runnable_binaries),
+           skipped: length(binaries) - length(runnable_binaries),
+           results: results
+         }}
+
+      _ ->
+        {:error, {:smoke_test_failed, failures}}
+    end
+  end
+
+  defp smoke_test_one_binary(binary_info, packages, opts) do
+    checks =
+      if packages == [] do
+        base_tailwind_probe(binary_info.path, opts)
+      else
+        smoke_test_plugins(binary_info.path, packages, opts)
+      end
+
+    # Manifest file entries are keyed by target_key (== architecture here);
+    # binary_info exposes :architecture, so fall back to it.
+    target_key = Map.get(binary_info, :target_key) || Map.get(binary_info, :architecture)
+    %{target_key: target_key, checks: checks}
+  end
+
+  # No plugins declared — fall back to the base Tailwind probe.
+  defp base_tailwind_probe(path, opts) do
+    case smoke_test_binary(path, opts) do
+      {:ok, _} ->
+        [%{plugin: "tailwindcss", status: :verified}]
+
+      {:error, reason} ->
+        [%{plugin: "tailwindcss", status: :failed, reason: inspect(reason)}]
     end
   end
 
@@ -1637,14 +1657,16 @@ defmodule Defdo.TailwindBuilder.Deployer do
              copy_objects(req, bucket, src_prefix, dst_prefix, channel, dst_channel, binary_names),
            :ok <-
              rewrite_jsons(
-               req,
-               fetcher,
-               base_url,
-               bucket,
-               src_prefix,
-               dst_prefix,
-               channel,
-               dst_channel,
+               %{
+                 req: req,
+                 fetcher: fetcher,
+                 base_url: base_url,
+                 bucket: bucket,
+                 src_prefix: src_prefix,
+                 dst_prefix: dst_prefix,
+                 src_channel: channel,
+                 dst_channel: dst_channel
+               },
                json_names
              ) do
         {:ok,
@@ -1709,50 +1731,49 @@ defmodule Defdo.TailwindBuilder.Deployer do
     end)
   end
 
-  defp rewrite_jsons(
-         req,
-         fetcher,
-         base_url,
-         bucket,
-         src_prefix,
-         dst_prefix,
-         src_channel,
-         dst_channel,
-         names
-       ) do
+  defp rewrite_jsons(ctx, names) do
     Enum.reduce_while(names, :ok, fn name, :ok ->
-      src_url = "#{base_url}/#{src_prefix}/#{src_channel}/#{name}"
-
-      # Rewrite the full prefix/channel path first (covers every URL/remote_key),
-      # then any bare prefix leftovers, so production references point at
-      # dst_prefix/dst_channel.
-      rewritten =
-        fn body ->
-          body
-          |> to_string_body()
-          |> String.replace("#{src_prefix}/#{src_channel}", "#{dst_prefix}/#{dst_channel}")
-          |> String.replace(src_prefix, dst_prefix)
-        end
-
-      case fetcher.(src_url) do
-        # Optional per-target fragments (manifest.d/*) are absent in older
-        # single-file manifests — skip a source that does not exist.
-        {:error, {:fetch_failed, _url, 404}} ->
-          {:cont, :ok}
-
-        {:ok, body} ->
-          case Req.put(req,
-                 url: "/#{bucket}/#{dst_prefix}/#{dst_channel}/#{name}",
-                 body: rewritten.(body)
-               ) do
-            {:ok, %{status: status}} when status in 200..299 -> {:cont, :ok}
-            error -> {:halt, {:error, {:rewrite_failed, name, error}}}
-          end
-
-        error ->
-          {:halt, {:error, {:rewrite_failed, name, error}}}
-      end
+      rewrite_one_json(ctx, name)
     end)
+  end
+
+  defp rewrite_one_json(ctx, name) do
+    src_url = "#{ctx.base_url}/#{ctx.src_prefix}/#{ctx.src_channel}/#{name}"
+
+    case ctx.fetcher.(src_url) do
+      # Optional per-target fragments (manifest.d/*) are absent in older
+      # single-file manifests — skip a source that does not exist.
+      {:error, {:fetch_failed, _url, 404}} ->
+        {:cont, :ok}
+
+      {:ok, body} ->
+        put_rewritten_json(ctx, name, body)
+
+      error ->
+        {:halt, {:error, {:rewrite_failed, name, error}}}
+    end
+  end
+
+  defp put_rewritten_json(ctx, name, body) do
+    # Rewrite the full prefix/channel path first (covers every URL/remote_key),
+    # then any bare prefix leftovers, so production references point at
+    # dst_prefix/dst_channel.
+    rewritten =
+      body
+      |> to_string_body()
+      |> String.replace(
+        "#{ctx.src_prefix}/#{ctx.src_channel}",
+        "#{ctx.dst_prefix}/#{ctx.dst_channel}"
+      )
+      |> String.replace(ctx.src_prefix, ctx.dst_prefix)
+
+    case Req.put(ctx.req,
+           url: "/#{ctx.bucket}/#{ctx.dst_prefix}/#{ctx.dst_channel}/#{name}",
+           body: rewritten
+         ) do
+      {:ok, %{status: status}} when status in 200..299 -> {:cont, :ok}
+      error -> {:halt, {:error, {:rewrite_failed, name, error}}}
+    end
   end
 
   defp to_string_body(body) when is_binary(body), do: body

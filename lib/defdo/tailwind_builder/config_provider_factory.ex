@@ -16,6 +16,18 @@ defmodule Defdo.TailwindBuilder.ConfigProviderFactory do
   }
 
   alias Defdo.TailwindBuilder.DefaultConfigProvider
+  alias Defdo.TailwindBuilder.Env
+
+  @required_callbacks [
+    {:get_supported_plugins, 0},
+    {:get_known_checksums, 0},
+    {:get_version_policy, 1},
+    {:get_operation_limits, 0},
+    {:get_deployment_config, 1},
+    {:get_build_policies, 0},
+    {:get_deployment_policies, 0},
+    {:validate_operation_policy, 2}
+  ]
 
   @doc """
   Get the appropriate ConfigProvider module for the current environment.
@@ -93,42 +105,27 @@ defmodule Defdo.TailwindBuilder.ConfigProviderFactory do
   and configuration.
   """
   def auto_detect_provider do
-    cond do
-      # Check explicit environment variables first
-      System.get_env("TAILWIND_BUILDER_ENV") == "production" ->
-        ProductionConfigProvider
-
-      System.get_env("TAILWIND_BUILDER_ENV") == "staging" ->
-        StagingConfigProvider
-
-      System.get_env("TAILWIND_BUILDER_ENV") == "development" ->
-        DevelopmentConfigProvider
-
-      System.get_env("TAILWIND_BUILDER_ENV") == "testing" ->
-        TestingConfigProvider
-
-      # Check CI environment
-      is_ci_environment?() ->
-        TestingConfigProvider
-
-      # Use Mix environment
-      Defdo.TailwindBuilder.Env.current() == :prod ->
-        ProductionConfigProvider
-
-      Defdo.TailwindBuilder.Env.current() == :staging ->
-        StagingConfigProvider
-
-      Defdo.TailwindBuilder.Env.current() == :test ->
-        TestingConfigProvider
-
-      Defdo.TailwindBuilder.Env.current() == :dev ->
-        DevelopmentConfigProvider
-
-      # Default fallback
-      true ->
-        DefaultConfigProvider
-    end
+    env_var_provider(System.get_env("TAILWIND_BUILDER_ENV")) ||
+      ci_provider() ||
+      mix_env_provider(Env.current()) ||
+      DefaultConfigProvider
   end
+
+  defp env_var_provider("production"), do: ProductionConfigProvider
+  defp env_var_provider("staging"), do: StagingConfigProvider
+  defp env_var_provider("development"), do: DevelopmentConfigProvider
+  defp env_var_provider("testing"), do: TestingConfigProvider
+  defp env_var_provider(_), do: nil
+
+  defp ci_provider do
+    if ci_environment?(), do: TestingConfigProvider
+  end
+
+  defp mix_env_provider(:prod), do: ProductionConfigProvider
+  defp mix_env_provider(:staging), do: StagingConfigProvider
+  defp mix_env_provider(:test), do: TestingConfigProvider
+  defp mix_env_provider(:dev), do: DevelopmentConfigProvider
+  defp mix_env_provider(_), do: nil
 
   @doc """
   Create a configured instance of the selected provider.
@@ -143,23 +140,31 @@ defmodule Defdo.TailwindBuilder.ConfigProviderFactory do
         provider_module
 
       :process ->
-        # Start a GenServer instance (if the provider supports it)
-        if function_exported?(provider_module, :start_link, 1) do
-          {:ok, pid} = provider_module.start_link(opts)
-          pid
-        else
-          raise ArgumentError, "Provider #{provider_module} does not support process instances"
-        end
+        start_process_instance(provider_module, opts)
 
       :agent ->
-        # Create an Agent with provider state (if supported)
-        if function_exported?(provider_module, :get_initial_state, 1) do
-          initial_state = provider_module.get_initial_state(opts)
-          {:ok, agent} = Agent.start_link(fn -> {provider_module, initial_state} end)
-          agent
-        else
-          raise ArgumentError, "Provider #{provider_module} does not support agent instances"
-        end
+        start_agent_instance(provider_module, opts)
+    end
+  end
+
+  defp start_process_instance(provider_module, opts) do
+    # Start a GenServer instance (if the provider supports it)
+    if function_exported?(provider_module, :start_link, 1) do
+      {:ok, pid} = provider_module.start_link(opts)
+      pid
+    else
+      raise ArgumentError, "Provider #{provider_module} does not support process instances"
+    end
+  end
+
+  defp start_agent_instance(provider_module, opts) do
+    # Create an Agent with provider state (if supported)
+    if function_exported?(provider_module, :get_initial_state, 1) do
+      initial_state = provider_module.get_initial_state(opts)
+      {:ok, agent} = Agent.start_link(fn -> {provider_module, initial_state} end)
+      agent
+    else
+      raise ArgumentError, "Provider #{provider_module} does not support agent instances"
     end
   end
 
@@ -247,23 +252,16 @@ defmodule Defdo.TailwindBuilder.ConfigProviderFactory do
   # Private helper functions
 
   defp implements_config_provider?(module) do
-    try do
-      # Check if module exists and implements the behavior
-      Code.ensure_loaded?(module) and
-        function_exported?(module, :get_supported_plugins, 0) and
-        function_exported?(module, :get_known_checksums, 0) and
-        function_exported?(module, :get_version_policy, 1) and
-        function_exported?(module, :get_operation_limits, 0) and
-        function_exported?(module, :get_deployment_config, 1) and
-        function_exported?(module, :get_build_policies, 0) and
-        function_exported?(module, :get_deployment_policies, 0) and
-        function_exported?(module, :validate_operation_policy, 2)
-    rescue
-      _ -> false
-    end
+    # Check if module exists and implements the behavior
+    Code.ensure_loaded?(module) and
+      Enum.all?(@required_callbacks, fn {fun, arity} ->
+        function_exported?(module, fun, arity)
+      end)
+  rescue
+    _ -> false
   end
 
-  defp is_ci_environment? do
+  defp ci_environment? do
     ci_indicators = [
       "CI",
       "CONTINUOUS_INTEGRATION",
@@ -315,24 +313,22 @@ defmodule Defdo.TailwindBuilder.ConfigProviderFactory do
   end
 
   defp get_provider_config_keys(provider_module) do
-    try do
-      # Try to get all configuration by calling the functions
-      base_keys = [
-        :supported_plugins,
-        :known_checksums,
-        :version_policy,
-        :operation_limits,
-        :deployment_config,
-        :build_policies,
-        :deployment_policies
-      ]
+    # Try to get all configuration by calling the functions
+    base_keys = [
+      :supported_plugins,
+      :known_checksums,
+      :version_policy,
+      :operation_limits,
+      :deployment_config,
+      :build_policies,
+      :deployment_policies
+    ]
 
-      optional_keys = get_provider_features(provider_module)
+    optional_keys = get_provider_features(provider_module)
 
-      base_keys ++ optional_keys
-    rescue
-      _ -> [:unknown]
-    end
+    base_keys ++ optional_keys
+  rescue
+    _ -> [:unknown]
   end
 
   defp supports_runtime_config?(provider_module) do
@@ -357,19 +353,8 @@ defmodule Defdo.TailwindBuilder.ConfigProviderFactory do
   end
 
   defp validate_required_functions(provider_module) do
-    required_functions = [
-      {:get_supported_plugins, 0},
-      {:get_known_checksums, 0},
-      {:get_version_policy, 1},
-      {:get_operation_limits, 0},
-      {:get_deployment_config, 1},
-      {:get_build_policies, 0},
-      {:get_deployment_policies, 0},
-      {:validate_operation_policy, 2}
-    ]
-
     missing =
-      Enum.reject(required_functions, fn {fun, arity} ->
+      Enum.reject(@required_callbacks, fn {fun, arity} ->
         function_exported?(provider_module, fun, arity)
       end)
 
@@ -381,18 +366,16 @@ defmodule Defdo.TailwindBuilder.ConfigProviderFactory do
   end
 
   defp validate_configuration_consistency(provider_module) do
-    try do
-      # Test that basic functions can be called without errors
-      _plugins = provider_module.get_supported_plugins()
-      _checksums = provider_module.get_known_checksums()
-      _limits = provider_module.get_operation_limits()
-      _build_policies = provider_module.get_build_policies()
-      _deploy_policies = provider_module.get_deployment_policies()
+    # Test that basic functions can be called without errors
+    _plugins = provider_module.get_supported_plugins()
+    _checksums = provider_module.get_known_checksums()
+    _limits = provider_module.get_operation_limits()
+    _build_policies = provider_module.get_build_policies()
+    _deploy_policies = provider_module.get_deployment_policies()
 
-      :ok
-    rescue
-      error ->
-        {:error, "Configuration validation failed: #{inspect(error)}"}
-    end
+    :ok
+  rescue
+    error ->
+      {:error, "Configuration validation failed: #{inspect(error)}"}
   end
 end

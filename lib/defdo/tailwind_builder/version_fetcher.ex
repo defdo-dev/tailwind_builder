@@ -163,12 +163,10 @@ defmodule Defdo.TailwindBuilder.VersionFetcher do
   Compara dos versiones semánticamente
   """
   def compare_versions(version1, version2) do
-    try do
-      Version.compare(version1, version2)
-    rescue
-      Version.InvalidVersionError ->
-        {:error, :invalid_version_format}
-    end
+    Version.compare(version1, version2)
+  rescue
+    Version.InvalidVersionError ->
+      {:error, :invalid_version_format}
   end
 
   @doc """
@@ -290,13 +288,11 @@ defmodule Defdo.TailwindBuilder.VersionFetcher do
   end
 
   defp download_for_checksum(url) do
-    try do
-      content = fetch_http_content_raw(url)
-      {:ok, content}
-    rescue
-      error ->
-        {:error, {:download_failed, error}}
-    end
+    content = fetch_http_content_raw(url)
+    {:ok, content}
+  rescue
+    error ->
+      {:error, {:download_failed, error}}
   end
 
   defp fetch_http_content_raw(url) do

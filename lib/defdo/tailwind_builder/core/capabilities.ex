@@ -82,51 +82,31 @@ defmodule Defdo.TailwindBuilder.Core.Capabilities do
   # Private functions
 
   defp get_major_version(version) do
-    try do
+    cond do
       # Check for obviously invalid versions first
-      if String.starts_with?(version, "999.") do
-        :unsupported
-      else
-        case version do
-          # Parse major version number more precisely
-          "3" <> _ ->
-            :v3
-
-          "4" <> _ ->
-            :v4
-
-          # Future v5 support
-          "5" <> _ ->
-            :v5
-
-          # Future v6 support
-          "6" <> _ ->
-            :v6
-
-          _ ->
-            # Fallback to semantic comparison for more complex version strings
-            case Version.compare(version, "4.0.0") do
-              :lt ->
-                :v3
-
-              _ ->
-                case Version.compare(version, "5.0.0") do
-                  :lt ->
-                    :v4
-
-                  _ ->
-                    case Version.compare(version, "6.0.0") do
-                      :lt -> :v5
-                      # Assume v6+ uses similar pattern to v4-v5
-                      _ -> :v6
-                    end
-                end
-            end
-        end
-      end
-    rescue
-      Version.InvalidVersionError -> :unsupported
+      String.starts_with?(version, "999.") -> :unsupported
+      # Parse major version number more precisely
+      String.starts_with?(version, "3") -> :v3
+      String.starts_with?(version, "4") -> :v4
+      # Future v5 support
+      String.starts_with?(version, "5") -> :v5
+      # Future v6 support
+      String.starts_with?(version, "6") -> :v6
+      # Fallback to semantic comparison for more complex version strings
+      true -> major_version_from_semver(version)
     end
+  end
+
+  defp major_version_from_semver(version) do
+    cond do
+      Version.compare(version, "4.0.0") == :lt -> :v3
+      Version.compare(version, "5.0.0") == :lt -> :v4
+      Version.compare(version, "6.0.0") == :lt -> :v5
+      # Assume v6+ uses similar pattern to v4-v5
+      true -> :v6
+    end
+  rescue
+    Version.InvalidVersionError -> :unsupported
   end
 
   defp v3_constraints do

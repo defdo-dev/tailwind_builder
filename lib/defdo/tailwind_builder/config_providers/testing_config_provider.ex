@@ -12,6 +12,8 @@ defmodule Defdo.TailwindBuilder.ConfigProviders.TestingConfigProvider do
 
   @behaviour Defdo.TailwindBuilder.ConfigProvider
 
+  alias Defdo.TailwindBuilder.Env
+
   # Minimal plugin set for testing
   @testing_supported_plugins %{
     "daisyui" => %{
@@ -296,7 +298,7 @@ defmodule Defdo.TailwindBuilder.ConfigProviders.TestingConfigProvider do
   Check if running in test mode
   """
   def test_mode? do
-    Defdo.TailwindBuilder.Env.current() == :test or Application.get_env(:tailwind_builder, :force_test_mode, false)
+    Env.current() == :test or Application.get_env(:tailwind_builder, :force_test_mode, false)
   end
 
   @doc """

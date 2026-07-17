@@ -2,13 +2,15 @@ defmodule Mix.Tasks.Tailwind.InstallDepsTest do
   use ExUnit.Case, async: false
   import ExUnit.CaptureIO
   import Mock
+
+  alias Defdo.TailwindBuilder.Dependencies
   alias Mix.Tasks.Tailwind.InstallDeps
 
   @moduletag :capture_log
 
   describe "run/1" do
     test "calls Dependencies.install! and shows success message" do
-      with_mock Defdo.TailwindBuilder.Dependencies, [:passthrough], install!: fn -> :ok end do
+      with_mock Dependencies, [:passthrough], install!: fn -> :ok end do
         output =
           capture_io(fn ->
             InstallDeps.run([])
@@ -16,14 +18,14 @@ defmodule Mix.Tasks.Tailwind.InstallDepsTest do
 
         assert output =~ "Installing Tailwind CLI build dependencies..."
         assert output =~ "✓ Dependencies installed successfully"
-        assert called(Defdo.TailwindBuilder.Dependencies.install!())
+        assert called(Dependencies.install!())
       end
     end
 
     test "handles when Dependencies.install! raises exception" do
       error_message = "Failed to install rust"
 
-      with_mock Defdo.TailwindBuilder.Dependencies, [:passthrough],
+      with_mock Dependencies, [:passthrough],
         install!: fn -> raise RuntimeError, error_message end do
         assert_raise RuntimeError, error_message, fn ->
           capture_io(fn ->
@@ -31,12 +33,12 @@ defmodule Mix.Tasks.Tailwind.InstallDepsTest do
           end)
         end
 
-        assert called(Defdo.TailwindBuilder.Dependencies.install!())
+        assert called(Dependencies.install!())
       end
     end
 
     test "ignores command line arguments" do
-      with_mock Defdo.TailwindBuilder.Dependencies, [:passthrough], install!: fn -> :ok end do
+      with_mock Dependencies, [:passthrough], install!: fn -> :ok end do
         output =
           capture_io(fn ->
             # Should work the same regardless of arguments
@@ -45,14 +47,14 @@ defmodule Mix.Tasks.Tailwind.InstallDepsTest do
 
         assert output =~ "Installing Tailwind CLI build dependencies..."
         assert output =~ "✓ Dependencies installed successfully"
-        assert called(Defdo.TailwindBuilder.Dependencies.install!())
+        assert called(Dependencies.install!())
       end
     end
 
     test "calls Mix.shell().info for output" do
       # Mock Mix.shell and Dependencies to verify behavior
       with_mocks([
-        {Defdo.TailwindBuilder.Dependencies, [:passthrough], [install!: fn -> :ok end]},
+        {Dependencies, [:passthrough], [install!: fn -> :ok end]},
         {Mix.Shell.IO, [:passthrough], [info: fn _message -> :ok end]}
       ]) do
         # Set the shell to our mocked one
@@ -63,7 +65,7 @@ defmodule Mix.Tasks.Tailwind.InstallDepsTest do
         # Verify Mix.Shell.IO.info was called with correct messages
         assert called(Mix.Shell.IO.info("Installing Tailwind CLI build dependencies..."))
         assert called(Mix.Shell.IO.info("✓ Dependencies installed successfully"))
-        assert called(Defdo.TailwindBuilder.Dependencies.install!())
+        assert called(Dependencies.install!())
       end
     end
   end

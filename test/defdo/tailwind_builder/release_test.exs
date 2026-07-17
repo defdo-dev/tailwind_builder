@@ -3,8 +3,8 @@ defmodule Defdo.TailwindBuilder.ReleaseTest do
 
   import Mock
 
-  alias Defdo.TailwindBuilder.Release
   alias Defdo.TailwindBuilder.ConfigProviders.{ProductionConfigProvider, TestingConfigProvider}
+  alias Defdo.TailwindBuilder.Release
 
   defp temp_dir(prefix) do
     path = Path.join(System.tmp_dir!(), "#{prefix}_#{System.unique_integer([:positive])}")

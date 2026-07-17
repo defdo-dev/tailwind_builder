@@ -151,15 +151,17 @@ defmodule Defdo.TailwindBuilder.Telemetry do
         component: "tailwind_builder"
       }
 
-      Logger.log(level, fn ->
-        case Jason.encode(structured_log) do
-          {:ok, json} -> json
-          {:error, _} -> "#{message} (metadata encoding failed)"
-        end
-      end)
+      Logger.log(level, fn -> encode_structured_log(structured_log, message) end)
     end
 
     :ok
+  end
+
+  defp encode_structured_log(structured_log, message) do
+    case Jason.encode(structured_log) do
+      {:ok, json} -> json
+      {:error, _} -> "#{message} (metadata encoding failed)"
+    end
   end
 
   @doc """
@@ -412,7 +414,7 @@ defmodule Defdo.TailwindBuilder.Telemetry do
         [value | Enum.take(values, 99)]
       end)
 
-    # Emit telemetry event  
+    # Emit telemetry event
     :telemetry.execute(@event_prefix ++ [:metric], %{value: value}, %{
       name: metric_name,
       tags: tags
@@ -457,26 +459,24 @@ defmodule Defdo.TailwindBuilder.Telemetry do
 
   defp initialize_prometheus do
     # Initialize Prometheus metrics if available
-    try do
-      if Code.ensure_loaded?(:prometheus_counter) and Code.ensure_loaded?(:prometheus_histogram) do
-        :prometheus_counter.declare(
-          name: :"#{@metrics_prefix}_operations_total",
-          help: "Total number of operations",
-          labels: [:operation, :status]
-        )
+    if Code.ensure_loaded?(:prometheus_counter) and Code.ensure_loaded?(:prometheus_histogram) do
+      :prometheus_counter.declare(
+        name: :"#{@metrics_prefix}_operations_total",
+        help: "Total number of operations",
+        labels: [:operation, :status]
+      )
 
-        :prometheus_histogram.declare(
-          name: :"#{@metrics_prefix}_operation_duration_seconds",
-          help: "Operation duration in seconds",
-          labels: [:operation],
-          buckets: [0.1, 0.5, 1.0, 2.5, 5.0, 10.0]
-        )
-      else
-        Logger.debug("Prometheus modules not available")
-      end
-    rescue
-      _ -> Logger.debug("Prometheus initialization failed")
+      :prometheus_histogram.declare(
+        name: :"#{@metrics_prefix}_operation_duration_seconds",
+        help: "Operation duration in seconds",
+        labels: [:operation],
+        buckets: [0.1, 0.5, 1.0, 2.5, 5.0, 10.0]
+      )
+    else
+      Logger.debug("Prometheus modules not available")
     end
+  rescue
+    _ -> Logger.debug("Prometheus initialization failed")
   end
 
   defp initialize_datadog do

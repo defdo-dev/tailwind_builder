@@ -13,7 +13,7 @@ defmodule Defdo.TailwindBuilder.Builder do
   """
 
   require Logger
-  alias Defdo.TailwindBuilder.{Core, Telemetry, Metrics}
+  alias Defdo.TailwindBuilder.{Core, Dependencies, Metrics, Telemetry}
 
   @doc """
   Compile a Tailwind CSS project with comprehensive telemetry tracking
@@ -33,7 +33,7 @@ defmodule Defdo.TailwindBuilder.Builder do
     case String.starts_with?(version, "4.") do
       true ->
         try do
-          Defdo.TailwindBuilder.Dependencies.check_version_dependencies!(version)
+          Dependencies.check_version_dependencies!(version)
 
           # Use telemetry wrapper for comprehensive tracking
           plugins = extract_plugins_from_opts(opts)
@@ -452,41 +452,37 @@ defmodule Defdo.TailwindBuilder.Builder do
 
   defp extract_plugins_from_paths(paths) do
     # Try to extract plugins from package.json or other config files
-    try do
-      package_json_path = Path.join(paths.tailwind_root, "package.json")
+    package_json_path = Path.join(paths.tailwind_root, "package.json")
 
-      if File.exists?(package_json_path) do
-        package_json_path
-        |> File.read!()
-        |> Jason.decode!()
-        |> get_in(["dependencies"])
-        |> Map.keys()
-        |> Enum.filter(&String.contains?(&1, "tailwind"))
-      else
-        []
-      end
-    rescue
-      _ -> []
+    if File.exists?(package_json_path) do
+      package_json_path
+      |> File.read!()
+      |> Jason.decode!()
+      |> get_in(["dependencies"])
+      |> Map.keys()
+      |> Enum.filter(&String.contains?(&1, "tailwind"))
+    else
+      []
     end
+  rescue
+    _ -> []
   end
 
   defp calculate_output_size(paths) do
     # Calculate total size of build outputs
-    try do
-      build_dirs = [
-        Path.join(paths.tailwind_root, "dist"),
-        Path.join(paths.tailwind_root, "build"),
-        Path.join(paths.standalone_root, "dist")
-      ]
+    build_dirs = [
+      Path.join(paths.tailwind_root, "dist"),
+      Path.join(paths.tailwind_root, "build"),
+      Path.join(paths.standalone_root, "dist")
+    ]
 
-      build_dirs
-      |> Enum.filter(&File.exists?/1)
-      |> Enum.reduce(0, fn dir, acc ->
-        acc + calculate_directory_size(dir)
-      end)
-    rescue
-      _ -> 0
-    end
+    build_dirs
+    |> Enum.filter(&File.exists?/1)
+    |> Enum.reduce(0, fn dir, acc ->
+      acc + calculate_directory_size(dir)
+    end)
+  rescue
+    _ -> 0
   end
 
   defp calculate_directory_size(dir) do
@@ -702,32 +698,9 @@ defmodule Defdo.TailwindBuilder.Builder do
   end
 
   defp rust_environment_vars do
-    rustup_home =
-      System.get_env("RUSTUP_HOME") ||
-        case System.cmd("rustup", ["show", "home"]) do
-          {out, 0} -> String.trim(out)
-          _ -> nil
-        end
-
-    cargo_home =
-      System.get_env("CARGO_HOME") ||
-        case rustup_home do
-          nil -> nil
-          home -> home
-        end
-
-    toolchain =
-      System.get_env("RUSTUP_TOOLCHAIN") ||
-        case System.cmd("rustup", ["show", "active-toolchain"]) do
-          {out, 0} ->
-            out
-            |> String.trim()
-            |> String.split()
-            |> List.first()
-
-          _ ->
-            nil
-        end
+    rustup_home = System.get_env("RUSTUP_HOME") || rustup_home_from_cli()
+    cargo_home = System.get_env("CARGO_HOME") || rustup_home
+    toolchain = System.get_env("RUSTUP_TOOLCHAIN") || active_toolchain_from_cli()
 
     [
       maybe_env("RUSTUP_HOME", rustup_home),
@@ -735,6 +708,26 @@ defmodule Defdo.TailwindBuilder.Builder do
       maybe_env("RUSTUP_TOOLCHAIN", toolchain)
     ]
     |> Enum.reject(&is_nil/1)
+  end
+
+  defp rustup_home_from_cli do
+    case System.cmd("rustup", ["show", "home"]) do
+      {out, 0} -> String.trim(out)
+      _ -> nil
+    end
+  end
+
+  defp active_toolchain_from_cli do
+    case System.cmd("rustup", ["show", "active-toolchain"]) do
+      {out, 0} ->
+        out
+        |> String.trim()
+        |> String.split()
+        |> List.first()
+
+      _ ->
+        nil
+    end
   end
 
   defp maybe_env(_key, nil), do: nil
@@ -754,10 +747,7 @@ defmodule Defdo.TailwindBuilder.Builder do
       updated_envs = Enum.uniq(envs ++ required)
 
       if updated_envs != envs do
-        new_inner =
-          updated_envs
-          |> Enum.map(&Jason.encode!/1)
-          |> Enum.join(", ")
+        new_inner = Enum.map_join(updated_envs, ", ", &Jason.encode!/1)
 
         updated_content =
           String.replace(

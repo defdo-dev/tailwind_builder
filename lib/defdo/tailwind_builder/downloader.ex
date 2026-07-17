@@ -13,7 +13,7 @@ defmodule Defdo.TailwindBuilder.Downloader do
   """
 
   require Logger
-  alias Defdo.TailwindBuilder.{Telemetry, Metrics}
+  alias Defdo.TailwindBuilder.{Metrics, Telemetry}
 
   @doc """
   Download and extract a Tailwind CSS file from GitHub with telemetry tracking
@@ -410,15 +410,13 @@ defmodule Defdo.TailwindBuilder.Downloader do
   end
 
   defp cleanup_tar(tar_path) do
-    try do
-      File.rm!(tar_path)
+    File.rm!(tar_path)
+    :ok
+  rescue
+    error ->
+      Logger.warning("Failed to cleanup tar file #{tar_path}: #{inspect(error)}")
+      # No fallar por esto
       :ok
-    rescue
-      error ->
-        Logger.warning("Failed to cleanup tar file #{tar_path}: #{inspect(error)}")
-        # No fallar por esto
-        :ok
-    end
   end
 
   # Funciones de descarga con seguridad (reutilizando lógica existente)
@@ -466,15 +464,18 @@ defmodule Defdo.TailwindBuilder.Downloader do
   end
 
   defp configure_proxy do
-    if proxy = System.get_env("HTTP_PROXY") || System.get_env("http_proxy") do
-      Logger.debug("Using HTTP_PROXY: #{proxy}")
-      %{host: host, port: port} = URI.parse(proxy)
+    http_proxy = System.get_env("HTTP_PROXY") || System.get_env("http_proxy")
+    https_proxy = System.get_env("HTTPS_PROXY") || System.get_env("https_proxy")
+
+    if http_proxy do
+      Logger.debug("Using HTTP_PROXY: #{http_proxy}")
+      %{host: host, port: port} = URI.parse(http_proxy)
       :httpc.set_options([{:proxy, {{String.to_charlist(host), port}, []}}])
     end
 
-    if proxy = System.get_env("HTTPS_PROXY") || System.get_env("https_proxy") do
-      Logger.debug("Using HTTPS_PROXY: #{proxy}")
-      %{host: host, port: port} = URI.parse(proxy)
+    if https_proxy do
+      Logger.debug("Using HTTPS_PROXY: #{https_proxy}")
+      %{host: host, port: port} = URI.parse(https_proxy)
       :httpc.set_options([{:https_proxy, {{String.to_charlist(host), port}, []}}])
     end
   end

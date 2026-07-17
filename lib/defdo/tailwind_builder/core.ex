@@ -21,10 +21,10 @@ defmodule Defdo.TailwindBuilder.Core do
       [:host_only]
   """
 
-  alias Defdo.TailwindBuilder.Core.Capabilities
   alias Defdo.TailwindBuilder.Core.ArchitectureMatrix
-  alias Defdo.TailwindBuilder.Core.TechnicalConstraints
+  alias Defdo.TailwindBuilder.Core.Capabilities
   alias Defdo.TailwindBuilder.Core.Targets
+  alias Defdo.TailwindBuilder.Core.TechnicalConstraints
 
   # Version and capability queries
 
