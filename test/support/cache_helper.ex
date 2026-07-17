@@ -1,4 +1,6 @@
 defmodule Defdo.TailwindBuilder.Test.CacheHelper do
+  @moduledoc false
+
   require Logger
 
   def with_cache(version, cache_key, fun) do

@@ -12,6 +12,8 @@ defmodule Defdo.TailwindBuilder.ConfigProviders.StagingConfigProvider do
 
   @behaviour Defdo.TailwindBuilder.ConfigProvider
 
+  alias Defdo.TailwindBuilder.Env
+
   # Staging supports more plugins than production but less than development
   @staging_supported_plugins %{
     "daisyui" => %{
@@ -387,7 +389,8 @@ defmodule Defdo.TailwindBuilder.ConfigProviders.StagingConfigProvider do
   Check if running in staging mode
   """
   def staging_mode? do
-    Defdo.TailwindBuilder.Env.current() == :staging or Application.get_env(:tailwind_builder, :force_staging_mode, false)
+    Env.current() == :staging or
+      Application.get_env(:tailwind_builder, :force_staging_mode, false)
   end
 
   @doc """

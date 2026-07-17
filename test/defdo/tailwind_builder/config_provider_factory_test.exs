@@ -87,7 +87,7 @@ defmodule Defdo.TailwindBuilder.ConfigProviderFactoryTest do
         System.delete_env("TAILWIND_BUILDER_ENV")
       end
 
-      # Test staging detection  
+      # Test staging detection
       System.put_env("TAILWIND_BUILDER_ENV", "staging")
 
       try do

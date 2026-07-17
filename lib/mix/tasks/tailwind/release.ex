@@ -125,27 +125,31 @@ defmodule Mix.Tasks.Tailwind.Release do
 
     case Release.run(release_opts) do
       {:ok, result} ->
-        if Map.get(result, :dry_run, false) do
-          Mix.shell().info("Release completed successfully (dry run — nothing uploaded)")
-        else
-          Mix.shell().info("Release completed successfully")
-        end
-
-        Mix.shell().info("  Version: #{result.version}")
-        Mix.shell().info("  Channel: #{result.release_channel}")
-        Mix.shell().info("  Source path: #{result.source_path}")
-        Mix.shell().info("  Deployed binaries: #{result.deploy.binaries_deployed}")
-
-        if is_binary(result.deploy.sha256sums) do
-          Mix.shell().info("  Checksums generated: yes")
-        end
-
-        if is_map(result.deploy.manifest) do
-          Mix.shell().info("  Manifest generated: yes")
-        end
+        print_release_summary(result)
 
       {:error, reason} ->
         Mix.raise("Release failed: #{inspect(reason)}")
+    end
+  end
+
+  defp print_release_summary(result) do
+    if Map.get(result, :dry_run, false) do
+      Mix.shell().info("Release completed successfully (dry run — nothing uploaded)")
+    else
+      Mix.shell().info("Release completed successfully")
+    end
+
+    Mix.shell().info("  Version: #{result.version}")
+    Mix.shell().info("  Channel: #{result.release_channel}")
+    Mix.shell().info("  Source path: #{result.source_path}")
+    Mix.shell().info("  Deployed binaries: #{result.deploy.binaries_deployed}")
+
+    if is_binary(result.deploy.sha256sums) do
+      Mix.shell().info("  Checksums generated: yes")
+    end
+
+    if is_map(result.deploy.manifest) do
+      Mix.shell().info("  Manifest generated: yes")
     end
   end
 
@@ -216,7 +220,7 @@ defmodule Mix.Tasks.Tailwind.Release do
 
         if missing != [] do
           Mix.raise(
-            "Missing R2 configuration for #{destination}: #{Enum.join(Enum.map(missing, &to_string/1), ", ")}. Set R2_ACCESS_KEY_ID, R2_SECRET_ACCESS_KEY, R2_HOST, and optionally R2_REGION."
+            "Missing R2 configuration for #{destination}: #{Enum.map_join(missing, ", ", &to_string/1)}. Set R2_ACCESS_KEY_ID, R2_SECRET_ACCESS_KEY, R2_HOST, and optionally R2_REGION."
           )
         end
 

@@ -162,8 +162,7 @@ defmodule Defdo.TailwindBuilder.Remote.Release do
 
     secret_map =
       [r2[:access_key_id], r2[:secret_access_key]]
-      |> Enum.reject(&is_nil/1)
-      |> Enum.reject(&(byte_size(&1) == 0))
+      |> Enum.reject(&(is_nil(&1) or byte_size(&1) == 0))
       |> Enum.map(&{&1, "[REDACTED]"})
       |> Enum.into(%{})
 

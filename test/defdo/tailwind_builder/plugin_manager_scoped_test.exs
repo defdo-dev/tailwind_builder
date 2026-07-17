@@ -41,7 +41,9 @@ defmodule Defdo.TailwindBuilder.PluginManagerScopedTest do
 
     test "keeps the raw name in string-literal spots (require/import)", %{patched: patched} do
       assert patched =~ ~s[require('@midudev/tailwind-animations')]
-      assert patched =~ ~s['@midudev/tailwind-animations': await import('@midudev/tailwind-animations')]
+
+      assert patched =~
+               ~s['@midudev/tailwind-animations': await import('@midudev/tailwind-animations')]
     end
 
     test "startsWith guard uses the raw name", %{patched: patched} do

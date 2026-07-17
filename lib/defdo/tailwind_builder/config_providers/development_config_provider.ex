@@ -12,6 +12,8 @@ defmodule Defdo.TailwindBuilder.ConfigProviders.DevelopmentConfigProvider do
 
   @behaviour Defdo.TailwindBuilder.ConfigProvider
 
+  alias Defdo.TailwindBuilder.Env
+
   # Extended plugin support for development
   @development_supported_plugins %{
     "daisyui" => %{
@@ -308,6 +310,7 @@ defmodule Defdo.TailwindBuilder.ConfigProviders.DevelopmentConfigProvider do
   Check if running in development mode
   """
   def development_mode? do
-    Defdo.TailwindBuilder.Env.current() == :dev or Application.get_env(:tailwind_builder, :force_development_mode, false)
+    Env.current() == :dev or
+      Application.get_env(:tailwind_builder, :force_development_mode, false)
   end
 end

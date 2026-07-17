@@ -7,13 +7,13 @@ defmodule Defdo.TailwindBuilder.Examples.ModularUsage do
   """
 
   alias Defdo.TailwindBuilder.{
-    Core,
-    Downloader,
-    PluginManager,
     Builder,
-    VersionFetcher,
+    Core,
+    DefaultConfigProvider,
+    Downloader,
     Orchestrator,
-    DefaultConfigProvider
+    PluginManager,
+    VersionFetcher
   }
 
   @doc """

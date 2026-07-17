@@ -316,10 +316,9 @@ defmodule Defdo.TailwindBuilder.Dashboard do
   defp format_active_spans(spans) do
     spans
     |> Enum.take(5)
-    |> Enum.map(fn span ->
+    |> Enum.map_join("\n", fn span ->
       "║ #{span.operation}: #{span.id} (#{span.duration}ms)                                     ║"
     end)
-    |> Enum.join("\n")
   end
 
   defp format_active_spans_html([]), do: "<p>No active operations</p>"

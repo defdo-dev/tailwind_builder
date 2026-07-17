@@ -12,6 +12,8 @@ defmodule Defdo.TailwindBuilder.ConfigProviders.ProductionConfigProvider do
 
   @behaviour Defdo.TailwindBuilder.ConfigProvider
 
+  alias Defdo.TailwindBuilder.Env
+
   # Only stable, well-tested plugins for production
   @production_supported_plugins %{
     "daisyui" => %{
@@ -140,7 +142,7 @@ defmodule Defdo.TailwindBuilder.ConfigProviders.ProductionConfigProvider do
           zone: "tailwind-releases",
           cache_everything: true,
           # 24 hours
-          edge_cache_ttl: 86400,
+          edge_cache_ttl: 86_400,
           # 1 hour
           browser_cache_ttl: 3600,
           purge_on_deploy: true
@@ -351,7 +353,8 @@ defmodule Defdo.TailwindBuilder.ConfigProviders.ProductionConfigProvider do
   Check if running in production mode
   """
   def production_mode? do
-    Defdo.TailwindBuilder.Env.current() == :prod or Application.get_env(:tailwind_builder, :force_production_mode, false)
+    Env.current() == :prod or
+      Application.get_env(:tailwind_builder, :force_production_mode, false)
   end
 
   @doc """

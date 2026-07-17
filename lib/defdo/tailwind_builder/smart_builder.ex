@@ -27,7 +27,7 @@ defmodule Defdo.TailwindBuilder.SmartBuilder do
   """
 
   require Logger
-  alias Defdo.TailwindBuilder.{Builder, RemoteBuilder, GitHubBuilder, Core, Telemetry}
+  alias Defdo.TailwindBuilder.{Builder, Core, GitHubBuilder, RemoteBuilder, Telemetry}
 
   @doc """
   Smart build with automatic strategy selection

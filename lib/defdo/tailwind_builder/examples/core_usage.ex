@@ -53,13 +53,7 @@ defmodule Defdo.TailwindBuilder.Examples.CoreUsage do
 
     for version <- versions do
       IO.puts("#{version}:")
-
-      for arch <- target_architectures do
-        can_compile = Core.can_cross_compile?(version, arch)
-        status = if can_compile, do: "✓ POSSIBLE", else: "✗ NOT POSSIBLE"
-        IO.puts("  #{arch}: #{status}")
-      end
-
+      print_cross_compile_status(version, target_architectures)
       IO.puts("")
     end
 
@@ -70,6 +64,14 @@ defmodule Defdo.TailwindBuilder.Examples.CoreUsage do
     for version <- versions do
       available_targets = Core.get_available_targets(version)
       IO.puts("#{version} can compile for: #{inspect(available_targets)}")
+    end
+  end
+
+  defp print_cross_compile_status(version, target_architectures) do
+    for arch <- target_architectures do
+      can_compile = Core.can_cross_compile?(version, arch)
+      status = if can_compile, do: "✓ POSSIBLE", else: "✗ NOT POSSIBLE"
+      IO.puts("  #{arch}: #{status}")
     end
   end
 

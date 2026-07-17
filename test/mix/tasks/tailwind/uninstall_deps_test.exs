@@ -2,13 +2,15 @@ defmodule Mix.Tasks.Tailwind.UninstallDepsTest do
   use ExUnit.Case, async: false
   import ExUnit.CaptureIO
   import Mock
+
+  alias Defdo.TailwindBuilder.Dependencies
   alias Mix.Tasks.Tailwind.UninstallDeps
 
   @moduletag :capture_log
 
   describe "run/1" do
     test "calls Dependencies.uninstall! and shows success message" do
-      with_mock Defdo.TailwindBuilder.Dependencies, [:passthrough], uninstall!: fn -> :ok end do
+      with_mock Dependencies, [:passthrough], uninstall!: fn -> :ok end do
         output =
           capture_io(fn ->
             UninstallDeps.run([])
@@ -16,14 +18,14 @@ defmodule Mix.Tasks.Tailwind.UninstallDepsTest do
 
         assert output =~ "Uninstalling Tailwind CLI build dependencies..."
         assert output =~ "✓ Dependencies uninstalled successfully"
-        assert called(Defdo.TailwindBuilder.Dependencies.uninstall!())
+        assert called(Dependencies.uninstall!())
       end
     end
 
     test "handles when Dependencies.uninstall! raises exception" do
       error_message = "Failed to uninstall nodejs"
 
-      with_mock Defdo.TailwindBuilder.Dependencies, [:passthrough],
+      with_mock Dependencies, [:passthrough],
         uninstall!: fn -> raise RuntimeError, error_message end do
         assert_raise RuntimeError, error_message, fn ->
           capture_io(fn ->
@@ -31,12 +33,12 @@ defmodule Mix.Tasks.Tailwind.UninstallDepsTest do
           end)
         end
 
-        assert called(Defdo.TailwindBuilder.Dependencies.uninstall!())
+        assert called(Dependencies.uninstall!())
       end
     end
 
     test "ignores command line arguments" do
-      with_mock Defdo.TailwindBuilder.Dependencies, [:passthrough], uninstall!: fn -> :ok end do
+      with_mock Dependencies, [:passthrough], uninstall!: fn -> :ok end do
         output =
           capture_io(fn ->
             # Should work the same regardless of arguments
@@ -45,14 +47,14 @@ defmodule Mix.Tasks.Tailwind.UninstallDepsTest do
 
         assert output =~ "Uninstalling Tailwind CLI build dependencies..."
         assert output =~ "✓ Dependencies uninstalled successfully"
-        assert called(Defdo.TailwindBuilder.Dependencies.uninstall!())
+        assert called(Dependencies.uninstall!())
       end
     end
 
     test "calls Mix.shell().info for output" do
       # Mock Mix.shell and Dependencies to verify behavior
       with_mocks([
-        {Defdo.TailwindBuilder.Dependencies, [:passthrough], [uninstall!: fn -> :ok end]},
+        {Dependencies, [:passthrough], [uninstall!: fn -> :ok end]},
         {Mix.Shell.IO, [:passthrough], [info: fn _message -> :ok end]}
       ]) do
         # Set the shell to our mocked one
@@ -63,7 +65,7 @@ defmodule Mix.Tasks.Tailwind.UninstallDepsTest do
         # Verify Mix.Shell.IO.info was called with correct messages
         assert called(Mix.Shell.IO.info("Uninstalling Tailwind CLI build dependencies..."))
         assert called(Mix.Shell.IO.info("✓ Dependencies uninstalled successfully"))
-        assert called(Defdo.TailwindBuilder.Dependencies.uninstall!())
+        assert called(Dependencies.uninstall!())
       end
     end
   end

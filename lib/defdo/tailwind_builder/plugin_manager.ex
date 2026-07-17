@@ -61,17 +61,20 @@ defmodule Defdo.TailwindBuilder.PluginManager do
       {:ok, files_to_patch} ->
         Enum.any?(files_to_patch, fn {relative_path, filename} ->
           file_path = build_file_path(base_path, version, filename, relative_path)
-
-          if File.exists?(file_path) do
-            content = File.read!(file_path)
-            plugin_detected_in_content?(content, plugin_spec, filename)
-          else
-            false
-          end
+          file_contains_plugin?(file_path, plugin_spec, filename)
         end)
 
       {:error, _} ->
         false
+    end
+  end
+
+  defp file_contains_plugin?(file_path, plugin_spec, filename) do
+    if File.exists?(file_path) do
+      content = File.read!(file_path)
+      plugin_detected_in_content?(content, plugin_spec, filename)
+    else
+      false
     end
   end
 
@@ -90,7 +93,7 @@ defmodule Defdo.TailwindBuilder.PluginManager do
       requires_bundling: constraints.plugin_system.requires_bundling,
       supports_dynamic_import: constraints.plugin_system.supports_dynamic_import,
       config_files: constraints.file_structure.config_files,
-      is_compatible: is_plugin_compatible?(plugin_spec, constraints)
+      is_compatible: plugin_compatible?(plugin_spec, constraints)
     }
   end
 
@@ -135,35 +138,27 @@ defmodule Defdo.TailwindBuilder.PluginManager do
   def patch_file_content(content, plugin_spec, filename, version) do
     case filename do
       "package.json" ->
-        case patch_package_json(content, plugin_spec, version) do
-          {:ok, new_content} -> {:ok, new_content}
-          new_content when is_binary(new_content) -> {:ok, new_content}
-          error -> error
-        end
+        normalize_patch_result(patch_package_json(content, plugin_spec, version))
 
       "standalone.js" ->
-        case patch_standalone_js(content, plugin_spec) do
-          {:ok, new_content} -> {:ok, new_content}
-          new_content when is_binary(new_content) -> {:ok, new_content}
-          error -> error
-        end
+        normalize_patch_result(patch_standalone_js(content, plugin_spec))
 
       "index.ts" ->
-        case patch_index_ts(content, plugin_spec) do
-          {:ok, new_content} -> {:ok, new_content}
-          new_content when is_binary(new_content) -> {:ok, new_content}
-          error -> error
-        end
+        normalize_patch_result(patch_index_ts(content, plugin_spec))
 
       _ ->
         {:error, {:unsupported_file_type, filename}}
     end
   end
 
+  defp normalize_patch_result({:ok, new_content}), do: {:ok, new_content}
+  defp normalize_patch_result(new_content) when is_binary(new_content), do: {:ok, new_content}
+  defp normalize_patch_result(error), do: error
+
   # Private functions
 
   defp maybe_validate_compatibility(plugin_spec, version, true) do
-    if is_plugin_compatible?(plugin_spec, Core.get_version_constraints(version)) do
+    if plugin_compatible?(plugin_spec, Core.get_version_constraints(version)) do
       :ok
     else
       {:error, :plugin_not_compatible}
@@ -172,7 +167,7 @@ defmodule Defdo.TailwindBuilder.PluginManager do
 
   defp maybe_validate_compatibility(_plugin_spec, _version, false), do: :ok
 
-  defp is_plugin_compatible?(_plugin_spec, constraints) do
+  defp plugin_compatible?(_plugin_spec, constraints) do
     # For now, we assume all plugins are compatible
     # if the plugin system is available
     map_size(constraints.plugin_system) > 0
@@ -226,19 +221,19 @@ defmodule Defdo.TailwindBuilder.PluginManager do
 
   defp read_and_patch_file(file_path, plugin_spec, filename, version) do
     if File.exists?(file_path) do
-      content = File.read!(file_path)
-
-      if plugin_detected_in_content?(content, plugin_spec, filename) do
-        {:skip, "Plugin already applied to #{filename}"}
-      else
-        case patch_file_content(content, plugin_spec, filename, version) do
-          {:ok, new_content} -> {:ok, new_content}
-          new_content when is_binary(new_content) -> {:ok, new_content}
-          error -> error
-        end
-      end
+      patch_existing_file(file_path, plugin_spec, filename, version)
     else
       {:error, {:file_not_found, file_path}}
+    end
+  end
+
+  defp patch_existing_file(file_path, plugin_spec, filename, version) do
+    content = File.read!(file_path)
+
+    if plugin_detected_in_content?(content, plugin_spec, filename) do
+      {:skip, "Plugin already applied to #{filename}"}
+    else
+      patch_file_content(content, plugin_spec, filename, version)
     end
   end
 
@@ -296,74 +291,81 @@ defmodule Defdo.TailwindBuilder.PluginManager do
   end
 
   defp patch_package_json_with_json(content, plugin_version, version) do
-    try do
-      package_json = Jason.decode!(content)
+    package_json = Jason.decode!(content)
 
-      constraints = Core.get_version_constraints(version)
-      dep_section = constraints.plugin_system.dependency_section
+    constraints = Core.get_version_constraints(version)
+    dep_section = constraints.plugin_system.dependency_section
 
-      [plugin_name, plugin_ver] = String.split(plugin_version, ": ", parts: 2)
-      plugin_name = String.trim(plugin_name, "\"")
-      plugin_ver = String.trim(plugin_ver, "\"")
+    [plugin_name, plugin_ver] = String.split(plugin_version, ": ", parts: 2)
+    plugin_name = String.trim(plugin_name, "\"")
+    plugin_ver = String.trim(plugin_ver, "\"")
 
-      package_json = Map.put_new(package_json, dep_section, %{})
-      updated_deps = Map.put(package_json[dep_section], plugin_name, plugin_ver)
-      updated_package_json = Map.put(package_json, dep_section, updated_deps)
+    package_json = Map.put_new(package_json, dep_section, %{})
+    updated_deps = Map.put(package_json[dep_section], plugin_name, plugin_ver)
+    updated_package_json = Map.put(package_json, dep_section, updated_deps)
 
-      {:ok, Jason.encode!(updated_package_json, pretty: true)}
-    rescue
-      error ->
-        Logger.warning("JSON parsing failed: #{inspect(error)}")
-        Logger.warning("Falling back to string-based patching")
+    {:ok, Jason.encode!(updated_package_json, pretty: true)}
+  rescue
+    error ->
+      Logger.warning("JSON parsing failed: #{inspect(error)}")
+      Logger.warning("Falling back to string-based patching")
 
-        # Fallback to original string-based patching
-        patch_string_at =
-          if Version.compare(version, "4.0.0") in [:eq, :gt] do
-            """
-            "dependencies": {
-            """
-          else
-            """
-            "devDependencies": {
-            """
-          end
+      # Fallback to original string-based patching
+      patch_package_json_with_string(content, plugin_version, version)
+  end
 
-        case split_with_self_plugin(content, patch_string_at) do
-          {beginning, splitter, rest} ->
-            order_parts = [beginning, splitter, "    ", plugin_version, ?,, ?\n, rest]
-            new_content = IO.iodata_to_binary(order_parts)
-            {:ok, new_content}
+  defp patch_package_json_with_string(content, plugin_version, version) do
+    patch_string_at =
+      if Version.compare(version, "4.0.0") in [:eq, :gt] do
+        """
+        "dependencies": {
+        """
+      else
+        """
+        "devDependencies": {
+        """
+      end
 
-          _ ->
-            {:error, :unable_to_patch}
-        end
+    case split_with_self_plugin(content, patch_string_at) do
+      {beginning, splitter, rest} ->
+        order_parts = [beginning, splitter, "    ", plugin_version, ?,, ?\n, rest]
+        new_content = IO.iodata_to_binary(order_parts)
+        {:ok, new_content}
+
+      _ ->
+        {:error, :unable_to_patch}
     end
   end
 
   defp patch_standalone_js(content, plugin_spec) do
     statement = plugin_spec["statement"]
 
-    if statement == nil do
-      {:error, {:missing_statement, "standalone.js requires statement in plugin spec"}}
-    else
-      if content =~ statement do
+    cond do
+      statement == nil ->
+        {:error, {:missing_statement, "standalone.js requires statement in plugin spec"}}
+
+      content =~ statement ->
         Logger.info("It's previously patched, we don't patch it again")
         {:ok, content}
-      else
-        patch_string_at = """
-        let localModules = {
-        """
 
-        case split_with_self_plugin(content, patch_string_at) do
-          {beginning, splitter, rest} ->
-            order_parts = [beginning, splitter, "  ", statement, ?,, ?\n, rest]
-            new_content = IO.iodata_to_binary(order_parts)
-            {:ok, new_content}
+      true ->
+        insert_standalone_statement(content, statement)
+    end
+  end
 
-          _ ->
-            {:error, :unable_to_patch}
-        end
-      end
+  defp insert_standalone_statement(content, statement) do
+    patch_string_at = """
+    let localModules = {
+    """
+
+    case split_with_self_plugin(content, patch_string_at) do
+      {beginning, splitter, rest} ->
+        order_parts = [beginning, splitter, "  ", statement, ?,, ?\n, rest]
+        new_content = IO.iodata_to_binary(order_parts)
+        {:ok, new_content}
+
+      _ ->
+        {:error, :unable_to_patch}
     end
   end
 
@@ -477,19 +479,13 @@ defmodule Defdo.TailwindBuilder.PluginManager do
     case split_with_self(content, string_to_split_on) do
       {beginning, splitter, rest} ->
         order_parts =
-          if insert_mode == :before do
-            if add_comma do
-              [beginning, patch_text, ?,, ?\n, splitter, spacer, rest]
-            else
-              [beginning, patch_text, ?\n, splitter, spacer, rest]
-            end
-          else
-            if add_comma do
-              [beginning, splitter, spacer, patch_text, ?,, ?\n, rest]
-            else
-              [beginning, splitter, spacer, patch_text, ?\n, rest]
-            end
-          end
+          build_patch_iodata(
+            {beginning, splitter, rest},
+            patch_text,
+            spacer,
+            add_comma,
+            insert_mode
+          )
 
         new_content = IO.iodata_to_binary(order_parts)
         {:ok, new_content}
@@ -498,6 +494,18 @@ defmodule Defdo.TailwindBuilder.PluginManager do
         {:error, :unable_to_patch}
     end
   end
+
+  defp build_patch_iodata({beginning, splitter, rest}, patch_text, spacer, true, :before),
+    do: [beginning, patch_text, ?,, ?\n, splitter, spacer, rest]
+
+  defp build_patch_iodata({beginning, splitter, rest}, patch_text, spacer, false, :before),
+    do: [beginning, patch_text, ?\n, splitter, spacer, rest]
+
+  defp build_patch_iodata({beginning, splitter, rest}, patch_text, spacer, true, _after),
+    do: [beginning, splitter, spacer, patch_text, ?,, ?\n, rest]
+
+  defp build_patch_iodata({beginning, splitter, rest}, patch_text, spacer, false, _after),
+    do: [beginning, splitter, spacer, patch_text, ?\n, rest]
 
   defp split_with_self(contents, text) do
     case :binary.split(contents, text) do

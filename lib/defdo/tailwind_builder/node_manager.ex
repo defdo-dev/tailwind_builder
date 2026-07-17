@@ -171,34 +171,7 @@ defmodule Defdo.TailwindBuilder.NodeManager do
         {:reply, {:error, :node_not_found}, state}
 
       node ->
-        case can_accept_job?(node) do
-          true ->
-            case send_build_to_node(node, build_request) do
-              {:ok, job_id} ->
-                # Update node status
-                updated_node = %{node | current_jobs: node.current_jobs + 1}
-                updated_nodes = Map.put(state.nodes, node_id, updated_node)
-
-                # Track active job
-                job_info = %{
-                  job_id: job_id,
-                  node_id: node_id,
-                  build_request: build_request,
-                  started_at: DateTime.utc_now()
-                }
-
-                updated_jobs = Map.put(state.active_jobs, job_id, job_info)
-
-                {:reply, {:ok, job_id},
-                 %{state | nodes: updated_nodes, active_jobs: updated_jobs}}
-
-              {:error, reason} ->
-                {:reply, {:error, reason}, state}
-            end
-
-          false ->
-            {:reply, {:error, :node_busy}, state}
-        end
+        submit_build_to_node(state, node_id, node, build_request)
     end
   end
 
@@ -317,6 +290,33 @@ defmodule Defdo.TailwindBuilder.NodeManager do
 
   ## Private Functions
 
+  defp submit_build_to_node(state, node_id, node, build_request) do
+    with true <- can_accept_job?(node),
+         {:ok, job_id} <- send_build_to_node(node, build_request) do
+      # Update node status
+      updated_node = %{node | current_jobs: node.current_jobs + 1}
+      updated_nodes = Map.put(state.nodes, node_id, updated_node)
+
+      # Track active job
+      job_info = %{
+        job_id: job_id,
+        node_id: node_id,
+        build_request: build_request,
+        started_at: DateTime.utc_now()
+      }
+
+      updated_jobs = Map.put(state.active_jobs, job_id, job_info)
+
+      {:reply, {:ok, job_id}, %{state | nodes: updated_nodes, active_jobs: updated_jobs}}
+    else
+      false ->
+        {:reply, {:error, :node_busy}, state}
+
+      {:error, reason} ->
+        {:reply, {:error, reason}, state}
+    end
+  end
+
   defp validate_node_info(node_info) do
     required_fields = [:node_id, :architecture, :endpoint, :capabilities]
 
@@ -431,39 +431,37 @@ defmodule Defdo.TailwindBuilder.NodeManager do
         nodes
 
       node ->
-        updated_node =
-          case result do
-            :success ->
-              new_total = node.total_builds + 1
-
-              new_avg_time =
-                case node.average_build_time do
-                  nil -> duration
-                  avg -> (avg * node.total_builds + duration) / new_total
-                end
-
-              %{
-                node
-                | total_builds: new_total,
-                  average_build_time: new_avg_time,
-                  success_rate:
-                    calculate_success_rate(new_total, new_total - node.total_builds + 1),
-                  current_jobs: max(0, node.current_jobs - 1)
-              }
-
-            :failure ->
-              new_total = node.total_builds + 1
-
-              %{
-                node
-                | total_builds: new_total,
-                  success_rate: calculate_success_rate(new_total, new_total - node.total_builds),
-                  current_jobs: max(0, node.current_jobs - 1)
-              }
-          end
-
-        Map.put(nodes, node_id, updated_node)
+        Map.put(nodes, node_id, apply_completion_result(node, result, duration))
     end
+  end
+
+  defp apply_completion_result(node, :success, duration) do
+    new_total = node.total_builds + 1
+
+    new_avg_time =
+      case node.average_build_time do
+        nil -> duration
+        avg -> (avg * node.total_builds + duration) / new_total
+      end
+
+    %{
+      node
+      | total_builds: new_total,
+        average_build_time: new_avg_time,
+        success_rate: calculate_success_rate(new_total, new_total - node.total_builds + 1),
+        current_jobs: max(0, node.current_jobs - 1)
+    }
+  end
+
+  defp apply_completion_result(node, :failure, _duration) do
+    new_total = node.total_builds + 1
+
+    %{
+      node
+      | total_builds: new_total,
+        success_rate: calculate_success_rate(new_total, new_total - node.total_builds),
+        current_jobs: max(0, node.current_jobs - 1)
+    }
   end
 
   defp calculate_success_rate(total_builds, successful_builds) do

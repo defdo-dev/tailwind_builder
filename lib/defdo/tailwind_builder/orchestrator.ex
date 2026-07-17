@@ -19,12 +19,12 @@ defmodule Defdo.TailwindBuilder.Orchestrator do
 
   require Logger
 
+  alias Defdo.TailwindBuilder.Builder
   alias Defdo.TailwindBuilder.Core
+  alias Defdo.TailwindBuilder.DefaultConfigProvider
+  alias Defdo.TailwindBuilder.Deployer
   alias Defdo.TailwindBuilder.Downloader
   alias Defdo.TailwindBuilder.PluginManager
-  alias Defdo.TailwindBuilder.Builder
-  alias Defdo.TailwindBuilder.Deployer
-  alias Defdo.TailwindBuilder.DefaultConfigProvider
 
   @doc """
   Executes a complete workflow with all specified steps

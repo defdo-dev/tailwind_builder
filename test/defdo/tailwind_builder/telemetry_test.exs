@@ -42,7 +42,7 @@ defmodule Defdo.TailwindBuilder.TelemetryTest do
       assert byte_size(span_id) == 16
 
       active_spans = Telemetry.get_active_spans()
-      assert length(active_spans) >= 1
+      assert active_spans != []
 
       # End the span
       :ok = Telemetry.end_span(span_id, :success, %{size: 1024})

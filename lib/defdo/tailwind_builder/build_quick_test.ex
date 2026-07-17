@@ -159,28 +159,28 @@ defmodule Defdo.TailwindBuilder.BuildQuickTest do
     start_time = System.monotonic_time()
 
     Logger.info("🧪 Starting test: #{scenario.description}")
-    if monitor_pid, do: send_test_update(monitor_pid, :test_start, scenario)
+    notify(monitor_pid, :test_start, scenario)
 
     try do
       # Step 1: Download
       Logger.info("📥 Downloading Tailwind v#{scenario.version}...")
-      if monitor_pid, do: send_test_update(monitor_pid, :download_start, scenario)
+      notify(monitor_pid, :download_start, scenario)
 
       {:ok, _} = TailwindBuilder.download(scenario_dir, scenario.version)
 
-      if monitor_pid, do: send_test_update(monitor_pid, :download_complete, scenario)
+      notify(monitor_pid, :download_complete, scenario)
 
       # Step 2: Add Plugin
       Logger.info("🔌 Adding plugin...")
-      if monitor_pid, do: send_test_update(monitor_pid, :plugin_start, scenario)
+      notify(monitor_pid, :plugin_start, scenario)
 
       TailwindBuilder.add_plugin(scenario.plugin, scenario.version, scenario_dir)
 
-      if monitor_pid, do: send_test_update(monitor_pid, :plugin_complete, scenario)
+      notify(monitor_pid, :plugin_complete, scenario)
 
       # Step 3: Build
       Logger.info("🏗️  Building binary...")
-      if monitor_pid, do: send_test_update(monitor_pid, :build_start, scenario)
+      notify(monitor_pid, :build_start, scenario)
 
       # Note: target_arch support could be added here in the future if needed
       # _build_options = case Map.get(scenario, :target_arch) do
@@ -190,15 +190,15 @@ defmodule Defdo.TailwindBuilder.BuildQuickTest do
 
       {:ok, build_result} = TailwindBuilder.build(scenario.version, scenario_dir, false)
 
-      if monitor_pid, do: send_test_update(monitor_pid, :build_complete, scenario)
+      notify(monitor_pid, :build_complete, scenario)
 
       # Step 4: Test Binary
       Logger.info("🧪 Testing binary functionality...")
-      if monitor_pid, do: send_test_update(monitor_pid, :test_binary_start, scenario)
+      notify(monitor_pid, :test_binary_start, scenario)
 
       test_result = test_binary_functionality(build_result, scenario)
 
-      if monitor_pid, do: send_test_update(monitor_pid, :test_binary_complete, scenario)
+      notify(monitor_pid, :test_binary_complete, scenario)
 
       duration_ms =
         System.convert_time_unit(System.monotonic_time() - start_time, :native, :millisecond)
@@ -218,8 +218,7 @@ defmodule Defdo.TailwindBuilder.BuildQuickTest do
         "✅ Test completed in #{duration_ms}ms (expected: #{scenario.expected_duration_ms}ms)"
       )
 
-      if monitor_pid,
-        do: send_test_update(monitor_pid, :test_success, %{scenario | result: result})
+      notify(monitor_pid, :test_success, %{scenario | result: result})
 
       {:ok, result}
     rescue
@@ -228,7 +227,7 @@ defmodule Defdo.TailwindBuilder.BuildQuickTest do
           System.convert_time_unit(System.monotonic_time() - start_time, :native, :millisecond)
 
         Logger.error("❌ Test failed after #{duration_ms}ms: #{inspect(error)}")
-        if monitor_pid, do: send_test_update(monitor_pid, :test_error, %{scenario | error: error})
+        notify(monitor_pid, :test_error, %{scenario | error: error})
         {:error, {error, __STACKTRACE__}}
     end
   end
@@ -243,26 +242,28 @@ defmodule Defdo.TailwindBuilder.BuildQuickTest do
   end
 
   defp test_binary_functionality(build_result, scenario) do
-    binary_path = find_binary_path(build_result)
-
-    case binary_path do
+    case find_binary_path(build_result) do
       nil ->
         {:error, :binary_not_found}
 
       path when is_binary(path) ->
-        # Test 1: Help command
-        case System.cmd(path, ["--help"], stderr_to_stdout: true) do
-          {output, 0} when is_binary(output) ->
-            if String.contains?(output, "tailwindcss") do
-              # Test 2: CSS compilation
-              test_css_compilation(path, scenario)
-            else
-              {:error, :invalid_help_output}
-            end
+        run_binary_checks(path, scenario)
+    end
+  end
 
-          {error_output, exit_code} ->
-            {:error, {:help_command_failed, exit_code, error_output}}
+  defp run_binary_checks(path, scenario) do
+    # Test 1: Help command
+    case System.cmd(path, ["--help"], stderr_to_stdout: true) do
+      {output, 0} when is_binary(output) ->
+        if String.contains?(output, "tailwindcss") do
+          # Test 2: CSS compilation
+          test_css_compilation(path, scenario)
+        else
+          {:error, :invalid_help_output}
         end
+
+      {error_output, exit_code} ->
+        {:error, {:help_command_failed, exit_code, error_output}}
     end
   end
 
@@ -308,28 +309,30 @@ defmodule Defdo.TailwindBuilder.BuildQuickTest do
   defp find_binary_path(%{tailwind_standalone_root: standalone_root}) do
     dist_dir = Path.join(standalone_root, "dist")
 
-    if File.exists?(dist_dir) do
-      case File.ls(dist_dir) do
-        {:ok, files} ->
-          # Look for macOS ARM64 binary first, then any executable
-          macos_binary = Enum.find(files, &String.contains?(&1, "macos-arm64"))
-          executable = macos_binary || Enum.find(files, &(not String.contains?(&1, ".")))
+    with true <- File.exists?(dist_dir),
+         {:ok, files} <- File.ls(dist_dir) do
+      pick_binary(dist_dir, files)
+    else
+      _ -> nil
+    end
+  end
 
-          if executable do
-            Path.join(dist_dir, executable)
-          else
-            nil
-          end
+  defp find_binary_path(_), do: nil
 
-        {:error, _} ->
-          nil
-      end
+  defp pick_binary(dist_dir, files) do
+    # Look for macOS ARM64 binary first, then any executable
+    macos_binary = Enum.find(files, &String.contains?(&1, "macos-arm64"))
+    executable = macos_binary || Enum.find(files, &(not String.contains?(&1, ".")))
+
+    if executable do
+      Path.join(dist_dir, executable)
     else
       nil
     end
   end
 
-  defp find_binary_path(_), do: nil
+  defp notify(nil, _event_type, _data), do: :ok
+  defp notify(monitor_pid, event_type, data), do: send_test_update(monitor_pid, event_type, data)
 
   defp send_test_update(monitor_pid, event_type, data) when is_pid(monitor_pid) do
     send(

@@ -228,58 +228,40 @@ defmodule Defdo.TailwindBuilder.Core.Targets do
     not MapSet.disjoint?(match_tokens(left), match_tokens(right))
   end
 
+  @filename_target_rules [
+    {["darwin", "macos", "apple"], ["arm64", "aarch64"], false, "macos-arm64"},
+    {["darwin", "macos", "apple"], ["x86_64", "x64"], false, "macos-x64"},
+    {["windows", "win32"], ["arm64", "aarch64"], false, "windows-arm64"},
+    {["windows", "win32"], ["x86_64", "x64"], false, "windows-x64"},
+    {["linux"], ["arm64", "aarch64"], true, "linux-arm64-musl"},
+    {["linux"], ["arm64", "aarch64"], false, "linux-arm64"},
+    {["linux"], ["armv7", "arm"], true, "linux-arm-musl"},
+    {["linux"], ["armv7", "arm"], false, "linux-arm"},
+    {["linux"], ["x86_64", "x64"], true, "linux-x64-musl"},
+    {["linux"], ["x86_64", "x64"], false, "linux-x64"},
+    {:freebsd, "freebsd-x64"},
+    {["android"], ["arm64", "aarch64"], false, "android-arm64"},
+    {["android"], ["armv7", "arm"], false, "android-arm"}
+  ]
+
   @doc """
   Infer a canonical target key from a published binary filename.
   """
   def target_key_from_filename(filename) when is_binary(filename) do
     normalized = String.downcase(filename)
 
-    cond do
-      contains_os_arch?(normalized, ["darwin", "macos", "apple"], ["arm64", "aarch64"]) ->
-        "macos-arm64"
+    Enum.find_value(@filename_target_rules, fn
+      {:freebsd, key} ->
+        if String.contains?(normalized, "freebsd"), do: key
 
-      contains_os_arch?(normalized, ["darwin", "macos", "apple"], ["x86_64", "x64"]) ->
-        "macos-x64"
+      {os_tokens, arch_tokens, musl?, key} ->
+        if filename_rule_matches?(normalized, os_tokens, arch_tokens, musl?), do: key
+    end)
+  end
 
-      contains_os_arch?(normalized, ["windows", "win32"], ["arm64", "aarch64"]) ->
-        "windows-arm64"
-
-      contains_os_arch?(normalized, ["windows", "win32"], ["x86_64", "x64"]) ->
-        "windows-x64"
-
-      contains_os_arch?(normalized, ["linux"], ["arm64", "aarch64"]) and
-          String.contains?(normalized, "musl") ->
-        "linux-arm64-musl"
-
-      contains_os_arch?(normalized, ["linux"], ["arm64", "aarch64"]) ->
-        "linux-arm64"
-
-      contains_os_arch?(normalized, ["linux"], ["armv7", "arm"]) and
-          String.contains?(normalized, "musl") ->
-        "linux-arm-musl"
-
-      contains_os_arch?(normalized, ["linux"], ["armv7", "arm"]) ->
-        "linux-arm"
-
-      contains_os_arch?(normalized, ["linux"], ["x86_64", "x64"]) and
-          String.contains?(normalized, "musl") ->
-        "linux-x64-musl"
-
-      contains_os_arch?(normalized, ["linux"], ["x86_64", "x64"]) ->
-        "linux-x64"
-
-      String.contains?(normalized, "freebsd") ->
-        "freebsd-x64"
-
-      contains_os_arch?(normalized, ["android"], ["arm64", "aarch64"]) ->
-        "android-arm64"
-
-      contains_os_arch?(normalized, ["android"], ["armv7", "arm"]) ->
-        "android-arm"
-
-      true ->
-        nil
-    end
+  defp filename_rule_matches?(normalized, os_tokens, arch_tokens, musl?) do
+    contains_os_arch?(normalized, os_tokens, arch_tokens) and
+      (not musl? or String.contains?(normalized, "musl"))
   end
 
   defp match_tokens(target) when is_atom(target), do: match_tokens(Atom.to_string(target))

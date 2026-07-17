@@ -116,36 +116,37 @@ defmodule Mix.Tasks.Tailwind.Release.Remote do
 
     case RemoteRelease.run(release_opts) do
       {:ok, report} ->
-        status = report["status"]
-        report_path = release_opts[:report_path]
-
-        case status do
-          "published" ->
-            Mix.shell().info("Remote release succeeded: #{status}")
-            Mix.shell().info("  Target: #{get_in(report, ["capability", "target_key"])}")
-            Mix.shell().info("  Report: #{report_path}")
-
-          "not_buildable" ->
-            missing = get_in(report, ["capability", "missing_tools"]) || []
-            Mix.shell().info("Remote host not build-capable.")
-            Mix.shell().info("  Missing tools: #{Enum.join(missing, ", ")}")
-            Mix.shell().info("  Report: #{report_path}")
-
-          "failed" ->
-            exit_status = get_in(report, ["logs", "exit_status"])
-            stdout_path = get_in(report, ["logs", "stdout_path"])
-            Mix.shell().error("Remote release failed (exit #{exit_status})")
-            Mix.shell().info("  Stdout log: #{stdout_path}")
-            Mix.shell().info("  Report: #{report_path}")
-            Mix.raise("Remote release failed with exit status #{exit_status}")
-
-          other ->
-            Mix.shell().info("Remote release status: #{other}")
-            Mix.shell().info("  Report: #{report_path}")
-        end
+        handle_report(report, release_opts[:report_path])
 
       {:error, reason} ->
         Mix.raise("Remote release error: #{inspect(reason)}")
+    end
+  end
+
+  defp handle_report(report, report_path) do
+    case report["status"] do
+      "published" ->
+        Mix.shell().info("Remote release succeeded: published")
+        Mix.shell().info("  Target: #{get_in(report, ["capability", "target_key"])}")
+        Mix.shell().info("  Report: #{report_path}")
+
+      "not_buildable" ->
+        missing = get_in(report, ["capability", "missing_tools"]) || []
+        Mix.shell().info("Remote host not build-capable.")
+        Mix.shell().info("  Missing tools: #{Enum.join(missing, ", ")}")
+        Mix.shell().info("  Report: #{report_path}")
+
+      "failed" ->
+        exit_status = get_in(report, ["logs", "exit_status"])
+        stdout_path = get_in(report, ["logs", "stdout_path"])
+        Mix.shell().error("Remote release failed (exit #{exit_status})")
+        Mix.shell().info("  Stdout log: #{stdout_path}")
+        Mix.shell().info("  Report: #{report_path}")
+        Mix.raise("Remote release failed with exit status #{exit_status}")
+
+      other ->
+        Mix.shell().info("Remote release status: #{other}")
+        Mix.shell().info("  Report: #{report_path}")
     end
   end
 end
