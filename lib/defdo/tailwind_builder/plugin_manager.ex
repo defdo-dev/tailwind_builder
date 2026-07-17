@@ -408,8 +408,9 @@ defmodule Defdo.TailwindBuilder.PluginManager do
 
   defp patch_special_path(content, plugin_name) do
     patch_string_at = ~s[  switch (id) {]
+    re = js_regex_escape(plugin_name)
 
-    patch_text = ~s[  if (/(\\/)?#{plugin_name}(\\/.+)?$/.test(id)) { return id }\n  ]
+    patch_text = ~s[  if (/(\\/)?#{re}(\\/.+)?$/.test(id)) { return id }\n  ]
 
     case patch_content(content, patch_string_at, patch_text, "", false, :before) do
       {:ok, new_content} -> new_content
@@ -430,13 +431,24 @@ defmodule Defdo.TailwindBuilder.PluginManager do
       if plugin_name == "daisyui" do
         ~s[\n  } else if (id.endsWith('daisyui/theme')) {\n    return require('daisyui/theme/index.js')\n  } else if (/(\\/)?daisyui(\\/(?!theme).+)?$/.test(id)) {\n    return require('daisyui')]
       else
-        ~s[\n  } else if (/(\\/)?#{plugin_name}(\\/.+)?$/.test(id)) {\n    return require('#{plugin_name}')]
+        # plugin_name goes into a JS *regex literal* here (must be escaped for
+        # scoped names like "@scope/pkg") but into a plain string for require/1.
+        ~s[\n  } else if (/(\\/)?#{js_regex_escape(plugin_name)}(\\/.+)?$/.test(id)) {\n    return require('#{plugin_name}')]
       end
 
     case patch_content(content, patch_string_at, patch_text, "", false, :after) do
       {:ok, new_content} -> new_content
       _error -> content
     end
+  end
+
+  # Escape a package name for safe interpolation inside a JS regex *literal*
+  # (`/.../`). Scoped names like "@midudev/tailwind-animations" contain "/" and
+  # other metacharacters that would otherwise terminate or corrupt the emitted
+  # regex; string-literal spots (require/1, import maps, `id === '...'`) keep the
+  # raw name.
+  defp js_regex_escape(name) do
+    String.replace(name, ~r/[.*+?^${}()|\[\]\\\/\-]/, fn ch -> "\\" <> ch end)
   end
 
   defp patch_bundled_imports(content, plugin_name) do

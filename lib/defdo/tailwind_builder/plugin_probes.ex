@@ -11,10 +11,16 @@ defmodule Defdo.TailwindBuilder.PluginProbes do
   (fail-closed), so a published binary always carries plugins proven to generate.
   """
 
-  @type probe :: %{content: String.t(), expected: [String.t()]}
+  @type load :: :plugin | :import
+  @type probe :: %{content: String.t(), expected: [String.t()], load: load()}
 
   # Package (npm name) => probe. `content` is placed in the scanned HTML; the
   # compiled, minified CSS must contain every string in `expected`.
+  #
+  # `load` selects how the plugin is loaded in the probe CSS:
+  #   * `:plugin` (default) — a JS plugin: `@plugin "pkg"`.
+  #   * `:import` — a CSS-first plugin (ships CSS, e.g. tw-animate-css): the CSS
+  #     is pulled in with `@import "pkg"` instead of `@plugin`.
   @probes %{
     "daisyui" => %{content: ~s(<button class="btn btn-primary">x</button>), expected: [".btn"]},
     "@tailwindcss/typography" => %{
@@ -28,6 +34,18 @@ defmodule Defdo.TailwindBuilder.PluginProbes do
     "@midudev/tailwind-animations" => %{
       content: ~s(<div class="animate-fade-in animate-duration-1000">x</div>),
       expected: ["animate-fade-in"]
+    },
+    # tailwindcss-animate: JS plugin exposing `animate-in`/`fade-in-*` utilities.
+    "tailwindcss-animate" => %{
+      content: ~s(<div class="animate-in fade-in-0">x</div>),
+      expected: ["animate-in"]
+    },
+    # tw-animate-css: CSS-first v4 port of tailwindcss-animate — loaded via
+    # `@import`, not `@plugin`. Exposes `animate-in`/`fade-in-*` utilities.
+    "tw-animate-css" => %{
+      content: ~s(<div class="animate-in fade-in-0">x</div>),
+      expected: ["animate-in"],
+      load: :import
     }
   }
 
@@ -42,7 +60,18 @@ defmodule Defdo.TailwindBuilder.PluginProbes do
 
   @doc """
   The input CSS for a probe: import Tailwind and load the plugin under test.
+
+  JS plugins load with `@plugin "pkg"`; CSS-first plugins (probe `load: :import`)
+  load with `@import "pkg"`.
   """
   @spec input_css(String.t()) :: String.t()
-  def input_css(package), do: ~s(@import "tailwindcss";\n@plugin "#{package}";\n)
+  def input_css(package) do
+    directive =
+      case probe_for(package) do
+        %{load: :import} -> ~s(@import "#{package}";)
+        _ -> ~s(@plugin "#{package}";)
+      end
+
+    ~s(@import "tailwindcss";\n#{directive}\n)
+  end
 end

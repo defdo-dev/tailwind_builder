@@ -15,6 +15,19 @@ defmodule Defdo.TailwindBuilder.PluginProbesTest do
     assert css =~ ~s(@plugin "daisyui")
   end
 
+  test "input_css loads a CSS-first plugin with @import, not @plugin" do
+    css = PluginProbes.input_css("tw-animate-css")
+    assert css =~ ~s(@import "tailwindcss")
+    assert css =~ ~s(@import "tw-animate-css")
+    refute css =~ ~s(@plugin "tw-animate-css")
+  end
+
+  test "probes cover the animation plugins" do
+    assert %{expected: ["animate-in"], load: :import} = PluginProbes.probe_for("tw-animate-css")
+    assert %{expected: ["animate-in"]} = PluginProbes.probe_for("tailwindcss-animate")
+    assert %{expected: ["animate-fade-in"]} = PluginProbes.probe_for("@midudev/tailwind-animations")
+  end
+
   test "plugin_packages extracts npm names from mixed plugin_set shapes" do
     plugin_set = [
       %{name: "daisyui", version: "5.6.10", plugin_key: "daisyui_v5"},

@@ -2,6 +2,24 @@
 
 ## [Unreleased]
 
+## [0.2.18]
+
+### Fixed
+- Plugin patcher escapes scoped package names (e.g.
+  `@midudev/tailwind-animations`) before embedding them in the standalone
+  `index.ts` JS regex literals. Previously the unescaped `/` terminated the
+  regex early and produced a corrupt patch, so scoped plugins could not be baked
+  in. String-literal spots (`require(...)`, import map, `id === '...'`) keep the
+  raw package name.
+
+### Added
+- Plugin functional probes for `tailwindcss-animate` and `tw-animate-css`.
+  Probes now declare how a plugin loads: JS plugins use `@plugin "pkg"`,
+  CSS-first plugins (`tw-animate-css`) use `@import "pkg"`. The probe stays
+  fail-closed — a plugin that installs but does not generate its marker fails the
+  release. Note: the `tw-animate-css` CSS-first path has not yet been proven
+  against a full real build; the first build that includes it is the proof.
+
 ## [0.2.17]
 
 ### Changed
