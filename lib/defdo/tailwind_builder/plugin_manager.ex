@@ -12,7 +12,7 @@ defmodule Defdo.TailwindBuilder.PluginManager do
   """
 
   require Logger
-  alias Defdo.TailwindBuilder.Core
+  alias Defdo.TailwindBuilder.{Core, PluginProbes}
 
   @doc """
   Applies a plugin to Tailwind files
@@ -252,7 +252,8 @@ defmodule Defdo.TailwindBuilder.PluginManager do
 
         content =~ ~s|id === '#{plugin_name}'| ||
           content =~ ~s|id.startsWith('#{plugin_name}/')| ||
-          content =~ ~s|'#{plugin_name}': await import('#{plugin_name}')|
+          content =~ ~s|'#{plugin_name}': await import('#{plugin_name}')| ||
+          css_first_plugin_patched?(content, plugin_name)
 
       _ ->
         false
@@ -372,24 +373,47 @@ defmodule Defdo.TailwindBuilder.PluginManager do
   defp patch_index_ts(content, plugin_spec) do
     plugin_name = extract_plugin_name(plugin_spec)
 
-    already_patched? =
-      content =~ ~s|id === '#{plugin_name}'| ||
-        content =~ ~s|id.startsWith('#{plugin_name}/')| ||
-        content =~ ~s|'#{plugin_name}': await import('#{plugin_name}')|
+    already_patched? = plugin_index_patched?(content, plugin_name)
 
     if already_patched? do
       Logger.info("Plugin #{plugin_name} already patched in index.ts, skipping")
       {:ok, content}
     else
-      # Aplicar múltiples patches para index.ts
       patched_content =
-        content
-        |> patch_tw_resolve(plugin_name)
-        |> patch_special_path(plugin_name)
-        |> patch_tw_load(plugin_name)
-        |> patch_bundled_imports(plugin_name)
+        if PluginProbes.css_first?(plugin_name) do
+          css_entry = PluginProbes.css_entry(plugin_name)
+
+          content
+          |> patch_tw_resolve(plugin_name)
+          |> patch_css_embed(plugin_name, css_entry)
+        else
+          content
+          |> patch_tw_resolve(plugin_name)
+          |> patch_special_path(plugin_name)
+          |> patch_tw_load(plugin_name)
+          |> patch_bundled_imports(plugin_name)
+        end
 
       {:ok, patched_content}
+    end
+  end
+
+  defp plugin_index_patched?(content, plugin_name) do
+    content =~ ~s|id === '#{plugin_name}'| ||
+      content =~ ~s|id.startsWith('#{plugin_name}/')| ||
+      content =~ ~s|'#{plugin_name}': await import('#{plugin_name}')| ||
+      css_first_plugin_patched?(content, plugin_name)
+  end
+
+  defp css_first_plugin_patched?(content, plugin_name) do
+    if PluginProbes.css_first?(plugin_name) do
+      css_entry = PluginProbes.css_entry(plugin_name)
+      ident = js_ident(plugin_name)
+
+      content =~ css_import_line(plugin_name, css_entry, ident) ||
+        content =~ ~s|localResolve(#{ident})|
+    else
+      false
     end
   end
 
@@ -418,6 +442,48 @@ defmodule Defdo.TailwindBuilder.PluginManager do
       {:ok, new_content} -> new_content
       _error -> content
     end
+  end
+
+  defp patch_css_embed(content, plugin_name, css_entry) do
+    ident = js_ident(plugin_name)
+    import_anchor = "import utilitiesCss from 'tailwindcss/utilities.css' with { type: 'file' }"
+    import_line = css_import_line(plugin_name, css_entry, ident)
+
+    content =
+      case patch_content(content, import_anchor, "\n" <> import_line, "", false, :after) do
+        {:ok, new_content} -> new_content
+        _error -> content
+      end
+
+    patch_string_at = ~s[  switch (id) {]
+    re = js_regex_escape(plugin_name)
+    patch_text = ~s[  if (/(\\/)?#{re}(\\/.+)?$/.test(id)) { return localResolve(#{ident}) }]
+
+    case patch_content(content, patch_string_at, patch_text, "", false, :before) do
+      {:ok, new_content} -> new_content
+      _error -> content
+    end
+  end
+
+  defp css_import_line(plugin_name, css_entry, ident) do
+    "import #{ident} from '../node_modules/#{plugin_name}/#{css_entry}' with { type: 'file' }"
+  end
+
+  defp js_ident(name) do
+    identifier =
+      name
+      |> String.split("/", parts: 2)
+      |> List.last()
+      |> String.split(~r/[^A-Za-z0-9]+/, trim: true)
+      |> case do
+        [] ->
+          "plugin"
+
+        [head | tail] ->
+          String.downcase(head) <> Enum.map_join(tail, &String.capitalize(String.downcase(&1)))
+      end
+
+    if Regex.match?(~r/^[A-Za-z_$]/, identifier), do: identifier, else: "plugin#{identifier}"
   end
 
   defp patch_tw_load(content, plugin_name) do

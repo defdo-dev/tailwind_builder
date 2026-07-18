@@ -2,6 +2,24 @@
 
 ## [Unreleased]
 
+## [0.2.24]
+
+### Fixed
+- CSS-first plugins (probes with `load: :import`) are now embedded into the v4
+  standalone as files (`with { type: 'file' }` plus `localResolve`) instead of
+  being incorrectly baked as JavaScript `require`/`await import` entries. A
+  package whose npm `exports` expose only the `style` condition, such as
+  `tw-animate-css`, cannot be resolved by Bun as a module and previously failed
+  the entire standalone build at `@tailwindcss/standalone#build` with
+  "Could not resolve". The path is proven end-to-end to compile
+  `@import "tw-animate-css"` and emit `animate-in`, `fade-in`, and
+  `slide-in-from-top`.
+
+### Changed
+- The registry now maps `tailwind-animations` (the real package) instead of the
+  deprecated `@midudev/tailwind-animations` shim, whose nested
+  `@import "tailwind-animations"` cannot be embedded.
+
 ## [0.2.23]
 
 > Toolchain/CI release — the Elixir library is unchanged from 0.2.21. Supersedes

@@ -23,11 +23,18 @@ defmodule Defdo.TailwindBuilder.PluginProbesTest do
   end
 
   test "probes cover the animation plugins" do
-    assert %{expected: ["animate-in"], load: :import} = PluginProbes.probe_for("tw-animate-css")
+    assert %{expected: ["animate-in"], load: :import, css_entry: "dist/tw-animate.css"} =
+             PluginProbes.probe_for("tw-animate-css")
+
+    assert %{expected: ["animate-fade-in"], load: :import, css_entry: "src/index.css"} =
+             PluginProbes.probe_for("tailwind-animations")
+
     assert %{expected: ["animate-in"]} = PluginProbes.probe_for("tailwindcss-animate")
 
-    assert %{expected: ["animate-fade-in"]} =
-             PluginProbes.probe_for("@midudev/tailwind-animations")
+    assert PluginProbes.css_first?("tw-animate-css")
+    assert PluginProbes.css_entry("tw-animate-css") == "dist/tw-animate.css"
+    refute PluginProbes.css_first?("daisyui")
+    assert PluginProbes.css_entry("daisyui") == nil
   end
 
   test "plugin_packages extracts npm names from mixed plugin_set shapes" do

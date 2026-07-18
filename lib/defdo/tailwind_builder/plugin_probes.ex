@@ -12,7 +12,12 @@ defmodule Defdo.TailwindBuilder.PluginProbes do
   """
 
   @type load :: :plugin | :import
-  @type probe :: %{content: String.t(), expected: [String.t()], load: load()}
+  @type probe :: %{
+          required(:content) => String.t(),
+          required(:expected) => [String.t()],
+          required(:load) => load(),
+          optional(:css_entry) => String.t()
+        }
 
   # Package (npm name) => probe. `content` is placed in the scanned HTML; the
   # compiled, minified CSS must contain every string in `expected`.
@@ -31,9 +36,11 @@ defmodule Defdo.TailwindBuilder.PluginProbes do
       content: ~s(<input type="checkbox" class="form-checkbox" />),
       expected: [".form-checkbox"]
     },
-    "@midudev/tailwind-animations" => %{
+    "tailwind-animations" => %{
       content: ~s(<div class="animate-fade-in animate-duration-1000">x</div>),
-      expected: ["animate-fade-in"]
+      expected: ["animate-fade-in"],
+      load: :import,
+      css_entry: "src/index.css"
     },
     # tailwindcss-animate: JS plugin exposing `animate-in`/`fade-in-*` utilities.
     "tailwindcss-animate" => %{
@@ -45,7 +52,8 @@ defmodule Defdo.TailwindBuilder.PluginProbes do
     "tw-animate-css" => %{
       content: ~s(<div class="animate-in fade-in-0">x</div>),
       expected: ["animate-in"],
-      load: :import
+      load: :import,
+      css_entry: "dist/tw-animate.css"
     }
   }
 
@@ -53,6 +61,25 @@ defmodule Defdo.TailwindBuilder.PluginProbes do
   @spec probe_for(String.t()) :: probe() | nil
   def probe_for(package) when is_binary(package), do: Map.get(@probes, package)
   def probe_for(_), do: nil
+
+  @doc "Whether the package is a CSS-first plugin loaded with `@import`."
+  @spec css_first?(String.t()) :: boolean()
+  def css_first?(package) when is_binary(package) do
+    match?(%{load: :import}, probe_for(package))
+  end
+
+  def css_first?(_), do: false
+
+  @doc "The relative CSS entry shipped by a CSS-first package, or nil."
+  @spec css_entry(String.t()) :: String.t() | nil
+  def css_entry(package) when is_binary(package) do
+    case probe_for(package) do
+      %{load: :import, css_entry: css_entry} -> css_entry
+      _ -> nil
+    end
+  end
+
+  def css_entry(_), do: nil
 
   @doc "All packages that have a registered probe."
   @spec known_packages() :: [String.t()]

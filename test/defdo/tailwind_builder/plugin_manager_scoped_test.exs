@@ -3,6 +3,11 @@ defmodule Defdo.TailwindBuilder.PluginManagerScopedTest do
 
   alias Defdo.TailwindBuilder.PluginManager
 
+  @standalone_fixture Path.expand(
+                        "../../support/fixtures/standalone_index_v4.3.2.ts",
+                        __DIR__
+                      )
+
   # Minimal synthetic v4 standalone index.ts carrying the exact anchor strings
   # the patcher splits on. Enough to prove the emitted patches, not a real build.
   @index_ts """
@@ -58,5 +63,38 @@ defmodule Defdo.TailwindBuilder.PluginManagerScopedTest do
     # "-" is escaped in the regex spot; the require stays raw.
     assert patched =~ ~S[/(\/)?tailwindcss\-animate(\/.+)?$/]
     assert patched =~ ~s[require('tailwindcss-animate')]
+  end
+
+  test "embeds CSS-first plugins as files without JS module patches" do
+    index_ts = File.read!(@standalone_fixture)
+    spec = %{"version" => ~s["tw-animate-css": "1.4.0"]}
+    {:ok, patched} = PluginManager.patch_file_content(index_ts, spec, "index.ts", "4.3.2")
+
+    assert patched =~
+             "import twAnimateCss from '../node_modules/tw-animate-css/dist/tw-animate.css' with { type: 'file' }"
+
+    assert patched =~ "return localResolve(twAnimateCss)"
+    assert patched =~ "id.startsWith('tw-animate-css') ||"
+    refute patched =~ "await import('tw-animate-css')"
+    refute patched =~ "require('tw-animate-css')"
+
+    # The embedded import must be its own statement, not glued onto the
+    # preceding `utilitiesCss` import (no newline == a JS syntax error).
+    refute patched =~ "with { type: 'file' }import twAnimateCss"
+    assert patched =~ "with { type: 'file' }\nimport twAnimateCss"
+
+    # The id guard must be a valid regex literal: the `/` separators inside it
+    # have to be escaped (`\/`), otherwise the literal terminates early.
+    assert patched =~ ~S[/(\/)?tw\-animate\-css(\/.+)?$/.test(id)]
+    refute patched =~ "/(/)?tw"
+  end
+
+  test "keeps the JS plugin path for daisyui" do
+    index_ts = File.read!(@standalone_fixture)
+    spec = %{"version" => ~s["daisyui": "5.6.16"]}
+    {:ok, patched} = PluginManager.patch_file_content(index_ts, spec, "index.ts", "4.3.2")
+
+    assert patched =~ "await import('daisyui')"
+    assert patched =~ "return require('daisyui')"
   end
 end
