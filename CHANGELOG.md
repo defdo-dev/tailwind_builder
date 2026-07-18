@@ -2,10 +2,11 @@
 
 ## [Unreleased]
 
-## [0.2.22]
+## [0.2.23]
 
-> Toolchain/CI release — the Elixir library is unchanged from 0.2.21. The tag
-> exists to rebuild the Docker base image and ships no code changes.
+> Toolchain/CI release — the Elixir library is unchanged from 0.2.21. Supersedes
+> 0.2.22, whose base build failed at push (misconfigured registry target); the
+> WASI SDK fix is unchanged, only the push path differs.
 
 ### Fixed
 - Base toolchain image (`docker/tailwind-builder-v4/Dockerfile`): install the
@@ -19,13 +20,14 @@
   Tailwind compile carrying custom plugins.
 
 ### Changed
-- Base-image CI (`.woodpecker/docker-image.yml`): push the toolchain image to
-  Harbor's internal ClusterIP (`10.43.231.228`, `registry.insecure=true`)
-  instead of `hub.defdo.ninja`. The public name resolves to Cloudflare, which
-  413s the ~614MB rust layer; the internal endpoint (already trusted by the
-  cluster nodes' `insecure-registries`) has no such limit. The image lands in
-  the same Harbor project, so `hub.defdo.ninja/...` pulls resolve it unchanged.
-  Isolated to this pipeline — no cluster-wide CoreDNS change.
+- Base-image CI (`.woodpecker/docker-image.yml`): documented that the push goes
+  to `hub.defdo.ninja` by NAME. In-cluster CoreDNS already rewrites that name to
+  the internal traefik LB (not Cloudflare), so the old "Cloudflare 413s the
+  ~614MB layer" note is stale — traefik streams the push with no body limit
+  (verified: a 300MB test layer pushes clean). Pushing by the ClusterIP instead
+  fails TLS (Harbor's cert has DNS SANs but no IP SAN, and buildkit's
+  `registry.insecure` does not cover the `/service/token` fetch), which is why
+  0.2.22's ClusterIP attempt was reverted.
 
 ## [0.2.21]
 

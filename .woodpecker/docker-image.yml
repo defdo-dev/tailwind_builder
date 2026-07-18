@@ -11,19 +11,16 @@
 # prim_tty NIF does not crash the way it does under QEMU emulation on an arm64
 # host building amd64.
 #
-# PUSH TARGET: the internal Harbor ClusterIP (10.43.231.228), NOT hub.defdo.ninja.
-# The base has a ~614MB rust layer; hub.defdo.ninja resolves to Cloudflare, which
-# rejects >~100MB bodies with 413, so pushing the public name from in-cluster
-# buildkit 413s. We push straight to Harbor's ClusterIP with registry.insecure=true
-# (the same internal endpoint the cluster nodes trust via daemon.json
-# insecure-registries: [10.43.231.228]). Harbor's cert actually DOES carry
-# SAN=hub.defdo.ninja, so a CoreDNS rewrite would work too, but that is a
-# cluster-wide change affecting every pod's image pulls — the insecure ClusterIP
-# push keeps the fix isolated to this pipeline. The image lands in the same Harbor
-# project (defdo/tailwind-builder), so pulls of hub.defdo.ninja/... resolve it
-# unchanged. The multi-arch index is assembled with manifest-tool.
-# NOTE: 10.43.231.228 is the harbor-registry svc ClusterIP (nas-apps, stable
-# 551d+). If Harbor's svc is recreated with a new ClusterIP, update it here.
+# PUSH TARGET: hub.defdo.ninja (the name — NOT Harbor's ClusterIP).
+# In-cluster CoreDNS rewrites hub.defdo.ninja -> traefik (coredns-custom
+# override), so buildkit (dnsPolicy ClusterFirst) resolves it to the internal
+# traefik LB, NOT Cloudflare — the old "Cloudflare 413s the ~614MB rust layer"
+# blocker is stale (it predates that rewrite). Traefik streams the /v2/ push with
+# no body-size middleware, so the large layer goes through. Pushing by the NAME
+# (not the ClusterIP) is REQUIRED: Harbor's cert carries DNS SANs
+# (hub.defdo.ninja) but NO IP SAN, so an IP push fails TLS on the /service/token
+# endpoint (buildkit's registry.insecure does not cover the oauth token fetch).
+# The multi-arch index is assembled with manifest-tool.
 #
 # The base is self-contained (installs the toolchain: OTP/Elixir/node/pnpm/rust/
 # bun), so the build context is just this repo.
@@ -54,14 +51,14 @@ steps:
         from_secret: docker_password
     commands:
       - export DOCKER_CONFIG=/tmp/dockercfg && mkdir -p $DOCKER_CONFIG
-      - 'printf ''{"auths":{"10.43.231.228":{"auth":"%s"}}}'' "$(printf "%s:%s" "$DOCKER_USERNAME" "$DOCKER_PASSWORD" | base64 -w0)" > $DOCKER_CONFIG/config.json'
+      - 'printf ''{"auths":{"hub.defdo.ninja":{"auth":"%s"}}}'' "$(printf "%s:%s" "$DOCKER_USERNAME" "$DOCKER_PASSWORD" | base64 -w0)" > $DOCKER_CONFIG/config.json'
       - |
         buildctl --addr tcp://buildkit-amd64.defdo-ci.svc.cluster.local:1234 build \
           --frontend dockerfile.v0 \
           --local context=. \
           --local dockerfile=docker/tailwind-builder-v4 \
           --opt filename=Dockerfile \
-          --output type=image,name=10.43.231.228/defdo/tailwind-builder:${CI_COMMIT_TAG}-amd64,push=true,registry.insecure=true
+          --output type=image,name=hub.defdo.ninja/defdo/tailwind-builder:${CI_COMMIT_TAG}-amd64,push=true
 
   - name: build-arm64
     image: moby/buildkit:v0.16.0
@@ -72,14 +69,14 @@ steps:
         from_secret: docker_password
     commands:
       - export DOCKER_CONFIG=/tmp/dockercfg && mkdir -p $DOCKER_CONFIG
-      - 'printf ''{"auths":{"10.43.231.228":{"auth":"%s"}}}'' "$(printf "%s:%s" "$DOCKER_USERNAME" "$DOCKER_PASSWORD" | base64 -w0)" > $DOCKER_CONFIG/config.json'
+      - 'printf ''{"auths":{"hub.defdo.ninja":{"auth":"%s"}}}'' "$(printf "%s:%s" "$DOCKER_USERNAME" "$DOCKER_PASSWORD" | base64 -w0)" > $DOCKER_CONFIG/config.json'
       - |
         buildctl --addr tcp://buildkit-arm64.defdo-ci.svc.cluster.local:1234 build \
           --frontend dockerfile.v0 \
           --local context=. \
           --local dockerfile=docker/tailwind-builder-v4 \
           --opt filename=Dockerfile \
-          --output type=image,name=10.43.231.228/defdo/tailwind-builder:${CI_COMMIT_TAG}-arm64,push=true,registry.insecure=true
+          --output type=image,name=hub.defdo.ninja/defdo/tailwind-builder:${CI_COMMIT_TAG}-arm64,push=true
 
   - name: manifest
     image: mplatform/manifest-tool:alpine
@@ -94,8 +91,8 @@ steps:
           manifest-tool --username "$DOCKER_USERNAME" --password "$DOCKER_PASSWORD" --insecure \
             push from-args \
             --platforms linux/amd64,linux/arm64 \
-            --template 10.43.231.228/defdo/tailwind-builder:${CI_COMMIT_TAG}-ARCH \
-            --target 10.43.231.228/defdo/tailwind-builder:$TAG
+            --template hub.defdo.ninja/defdo/tailwind-builder:${CI_COMMIT_TAG}-ARCH \
+            --target hub.defdo.ninja/defdo/tailwind-builder:$TAG
         done
     depends_on:
       - build-amd64
