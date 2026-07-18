@@ -22,9 +22,18 @@ ARG NODE_VERSION=22.20.0
 ARG RUST_VERSION=1.95.0
 ARG BUN_VERSION=1.3.14
 ARG PNPM_VERSION=11.9.0
+# WASI SDK provides clang + wasm-ld + the wasi sysroot that napi-rs needs to
+# build the oxide crate's wasm32-wasip1-threads artifact. The Rust target alone
+# (rustup target add) is not enough — without this the workspace build fails at
+# @tailwindcss/oxide's build:wasm step ("dist directory not found" downstream).
+# Tag is wasi-sdk-<MAJOR>, asset is wasi-sdk-<VERSION>-<arch>-linux.tar.gz.
+ARG WASI_SDK_MAJOR=25
+ARG WASI_SDK_VERSION=25.0
 
 ENV LANG=C.UTF-8
 ENV PATH="/root/.cargo/bin:/root/.bun/bin:${PATH}"
+# napi-rs resolves the wasm C toolchain from WASI_SDK_PATH.
+ENV WASI_SDK_PATH="/opt/wasi-sdk"
 
 # System packages: compiler toolchain, curl, git, archive tools.
 # python3: node-gyp needs it to build native npm modules from source. On arm64,
@@ -61,6 +70,19 @@ RUN curl -fsSL https://sh.rustup.rs | \
 # wasm32 target: the workspace build runs the oxide crate's `build:wasm`
 # (napi build --target wasm32-wasip1-threads), so this target is required.
 RUN rustup target add wasm32-wasip1-threads
+
+# WASI SDK: the C/link half of the wasm build. napi-rs invokes
+# $WASI_SDK_PATH/bin/clang + wasm-ld against the wasi sysroot to produce the
+# oxide wasm artifact. Self-contained tarball (no apt LLVM) to keep the base
+# slim. Arch-detected like the Node/Bun steps (x86_64 / arm64).
+RUN ARCH=$(uname -m | sed 's/x86_64/x86_64/;s/aarch64/arm64/') && \
+    curl -fsSL \
+    "https://github.com/WebAssembly/wasi-sdk/releases/download/wasi-sdk-${WASI_SDK_MAJOR}/wasi-sdk-${WASI_SDK_VERSION}-${ARCH}-linux.tar.gz" \
+    -o /tmp/wasi-sdk.tar.gz && \
+    mkdir -p /opt/wasi-sdk && \
+    tar -xzf /tmp/wasi-sdk.tar.gz -C /opt/wasi-sdk --strip-components=1 && \
+    rm -f /tmp/wasi-sdk.tar.gz && \
+    "${WASI_SDK_PATH}/bin/clang" --version
 
 # Bun — GitHub release, version-pinned, arch-detected
 RUN ARCH=$(uname -m | sed 's/x86_64/x64/;s/aarch64/aarch64/') && \
