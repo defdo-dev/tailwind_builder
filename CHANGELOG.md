@@ -2,6 +2,31 @@
 
 ## [Unreleased]
 
+## [0.2.22]
+
+> Toolchain/CI release — the Elixir library is unchanged from 0.2.21. The tag
+> exists to rebuild the Docker base image and ships no code changes.
+
+### Fixed
+- Base toolchain image (`docker/tailwind-builder-v4/Dockerfile`): install the
+  WASI SDK (clang + wasm-ld + wasi sysroot) so napi-rs can build
+  `@tailwindcss/oxide`'s `wasm32-wasip1-threads` artifact. The image had the
+  Rust target (`rustup target add`) but not the C toolchain it needs, so the
+  workspace build (`turbo build`) failed at oxide's `build:wasm` step and the
+  standalone `dist/` was never produced — every cold-cache build died at deploy
+  `find_binaries` (`dist_directory_not_found`). Warm turbo cache had been
+  masking it. Keeps wasm buildable for a future in-browser (CMS/CodeMirror)
+  Tailwind compile carrying custom plugins.
+
+### Changed
+- Base-image CI (`.woodpecker/docker-image.yml`): push the toolchain image to
+  Harbor's internal ClusterIP (`10.43.231.228`, `registry.insecure=true`)
+  instead of `hub.defdo.ninja`. The public name resolves to Cloudflare, which
+  413s the ~614MB rust layer; the internal endpoint (already trusted by the
+  cluster nodes' `insecure-registries`) has no such limit. The image lands in
+  the same Harbor project, so `hub.defdo.ninja/...` pulls resolve it unchanged.
+  Isolated to this pipeline — no cluster-wide CoreDNS change.
+
 ## [0.2.21]
 
 ### Changed
