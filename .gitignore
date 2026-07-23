@@ -27,3 +27,6 @@ tailwind_builder-*.tar
 
 /tailwindcss*
 .DS_Store
+# Derived code graph: rebuilt locally with `graphify update .`, never shared.
+graphify-out/
+.tool-versions.local
