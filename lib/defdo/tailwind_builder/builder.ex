@@ -88,7 +88,15 @@ defmodule Defdo.TailwindBuilder.Builder do
            {:validate_tools, maybe_validate_tools_with_telemetry(version, validate_tools)},
          {:validate_paths, {:ok, paths}} <-
            {:validate_paths, validate_and_get_paths_with_telemetry(source_path, version)},
-         {:compile, compilation_result} <-
+         # `{:ok, _}` explicitly. This read `{:compile, compilation_result}`, which matches ANY
+         # term including `{:error, reason}` — so a failed build fell through to the success path,
+         # `compile/1` returned `{:ok, result}`, and the `{step, error}` branch below was
+         # unreachable. Observed: the log printed
+         # `Compilation result: {:error, {:"pnpm install", ...}}` and the pipeline still advanced
+         # into `Deployer.deploy`. It only stopped later because `dist/` happened to be absent;
+         # on a builder that reuses a deterministic temp path, a stale `dist/` from an earlier run
+         # would have been checksummed, smoke-tested and published as freshly built.
+         {:compile, {:ok, compilation_result}} <-
            {:compile, execute_compilation_with_telemetry(version, paths, debug, timeout)} do
       Logger.debug("Compilation result: #{inspect(compilation_result)}")
 
