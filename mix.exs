@@ -54,7 +54,6 @@ defmodule Defdo.TailwindBuilder.MixProject do
   defp deps do
     [
       {:castore, ">= 0.0.0"},
-      {:mox, "~> 1.0"},
       {:mock, "~> 0.3", only: :test},
       {:req, "~> 0.6"},
       {:defdo_s3, "~> 0.1.0", organization: @organization},
