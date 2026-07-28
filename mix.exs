@@ -36,7 +36,7 @@ defmodule Defdo.TailwindBuilder.MixProject do
   defp package do
     [
       organization: @organization,
-      files: ~w(lib CHANGELOG.md LICENSE.md mix.exs README.md VERSION),
+      files: ~w(lib priv CHANGELOG.md LICENSE.md mix.exs README.md VERSION),
       licenses: ["Apache-2.0"],
       links: %{"GitHub" => @source_url}
     ]
