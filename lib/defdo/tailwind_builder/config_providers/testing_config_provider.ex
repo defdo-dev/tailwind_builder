@@ -24,7 +24,7 @@ defmodule Defdo.TailwindBuilder.ConfigProviders.TestingConfigProvider do
       "compatible_versions" => ["3.x", "4.x"]
     },
     "daisyui_v5" => %{
-      "version" => ~s["daisyui": "5.6.10"],
+      "version" => ~s["daisyui": "5.7.4"],
       "description" => "Test plugin for Tailwind CSS v5",
       "npm_name" => "daisyui",
       "compatible_versions" => ["4.x"]
@@ -45,6 +45,7 @@ defmodule Defdo.TailwindBuilder.ConfigProviders.TestingConfigProvider do
     "4.0.17" => "3590bcb90a75c32ba8b10d692d26838caedbc267a57db23931694abc9598c873",
     "4.1.11" => "149b7db8417a4a0419ada1d2dc428a11202fc6b971f037b7a8527371c59e0cae",
     "4.2.2" => "b8ff36e8115f56883638d593563418ee279be9f8304107add89f79d9cbf5b147",
+    "4.3.3" => "e702ce2493505287e8f6cab2dd1e0c14f154e57c296854d4ded38bde5da2be6e",
     # Test-specific versions
     "test-version-1.0.0" => "test_checksum_deterministic_value",
     "mock-version-2.0.0" => "mock_checksum_for_testing"
@@ -236,9 +237,9 @@ defmodule Defdo.TailwindBuilder.ConfigProviders.TestingConfigProvider do
       use_cached_responses: true,
       deterministic_responses: true,
       fixture_data: %{
-        tailwind_versions: ["3.4.17", "4.0.9", "4.1.11"],
+        tailwind_versions: ["3.4.17", "4.0.9", "4.1.11", "4.3.3"],
         plugin_versions: %{
-          "daisyui" => ["4.12.23", "5.5.19", "5.6.10"],
+          "daisyui" => ["4.12.23", "5.5.19", "5.6.10", "5.7.4"],
           "test-plugin" => ["1.0.0", "2.0.0"]
         }
       }

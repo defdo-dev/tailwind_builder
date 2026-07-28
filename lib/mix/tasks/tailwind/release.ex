@@ -2,7 +2,7 @@ defmodule Mix.Tasks.Tailwind.Release do
   @moduledoc """
   Build and publish a Tailwind standalone release candidate.
 
-  Defaults to Tailwind 4.3.2 with DaisyUI 5.6.10 and release channel v4.3.2-rc1.
+  Defaults to Tailwind 4.3.3 with DaisyUI 5.7.4 and release channel v4.3.3-rc1.
 
   ## Options
 
@@ -102,8 +102,8 @@ defmodule Mix.Tasks.Tailwind.Release do
 
     release_opts =
       [
-        version: Keyword.get(opts, :version, "4.3.2"),
-        release_channel: Keyword.get(opts, :channel, "v4.3.2-rc1"),
+        version: Keyword.get(opts, :version, "4.3.3"),
+        release_channel: Keyword.get(opts, :channel, "v4.3.3-rc1"),
         source_path: Keyword.get(opts, :source_path),
         bucket: Keyword.get(opts, :bucket, System.get_env("TAILWIND_R2_BUCKET", "defdo")),
         prefix:

@@ -16,7 +16,8 @@ defmodule Defdo.TailwindBuilder.Core.ArchitectureMatrix do
       "3.4.17" => get_version_compatibility("3.4.17"),
       "4.0.9" => get_version_compatibility("4.0.9"),
       "4.0.17" => get_version_compatibility("4.0.17"),
-      "4.1.11" => get_version_compatibility("4.1.11")
+      "4.1.11" => get_version_compatibility("4.1.11"),
+      "4.3.3" => get_version_compatibility("4.3.3")
     }
   end
 
