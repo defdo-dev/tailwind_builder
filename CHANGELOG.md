@@ -2,6 +2,20 @@
 
 ## [Unreleased]
 
+## [0.2.25]
+
+### Added
+- Register Tailwind CLI 4.3.3 as a supported release version: source tarball
+  sha256 in every config provider (production gate included), the v4
+  `wasm32-wasip1-threads` requirement map, the architecture/compatibility
+  matrices, and the per-version policy maps.
+
+### Changed
+- Pin the `daisyui_v5` plugin to daisyUI 5.7.4 across all plugin catalogs and
+  config providers (was 5.6.10).
+- `mix tailwind.release` and the canary Woodpecker pipelines now default to
+  Tailwind 4.3.3 / channel `v4.3.3-rc1`.
+
 ## [0.2.24]
 
 ### Fixed
