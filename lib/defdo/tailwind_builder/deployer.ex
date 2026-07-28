@@ -1814,12 +1814,30 @@ defmodule Defdo.TailwindBuilder.Deployer do
                storage_base_url: base_url,
                release_channel: channel
              )
+           ),
+         :ok <-
+           guard_promotion_pack(
+             decoded["browser_pack"],
+             Keyword.merge(opts,
+               prefix: src_prefix,
+               storage_base_url: base_url,
+               release_channel: channel
+             )
            ) do
       req = storage_req()
       files = decoded["files"] || []
       target_keys = files |> Enum.map(& &1["target_key"]) |> Enum.reject(&is_nil/1)
 
-      binary_names = Enum.map(files, & &1["filename"]) ++ ["sha256sums.txt"]
+      # The browser pack is a channel-level artifact (not in `files`), but it
+      # must travel with the promotion or the prod manifest would reference a
+      # pack checksum whose object was never copied.
+      pack_names =
+        case decoded["browser_pack"] do
+          %{"filename" => filename} when is_binary(filename) -> [filename]
+          _ -> []
+        end
+
+      binary_names = Enum.map(files, & &1["filename"]) ++ pack_names ++ ["sha256sums.txt"]
       json_names = ["manifest.json" | Enum.map(target_keys, &"manifest.d/#{&1}.json")]
 
       with :ok <-
@@ -1900,6 +1918,24 @@ defmodule Defdo.TailwindBuilder.Deployer do
         build_storage_url(artifact_remote_key(file["filename"], opts, nil), opts)
 
     is_binary(url) and checker.(url)
+  end
+
+  # The pack travels with the promotion, so its source object must exist too.
+  defp guard_promotion_pack(pack, opts)
+  defp guard_promotion_pack(nil, _opts), do: :ok
+
+  defp guard_promotion_pack(%{"filename" => filename} = pack, opts) do
+    checker = Keyword.get(opts, :head_checker, &default_head_checker/1)
+
+    url =
+      pack["storage_url"] ||
+        build_storage_url(artifact_remote_key(filename, opts, nil), opts)
+
+    if is_binary(url) and checker.(url) do
+      :ok
+    else
+      {:error, {:promotion_blocked, {:artifacts_unreachable, [filename]}}}
+    end
   end
 
   defp default_head_checker(url) do
