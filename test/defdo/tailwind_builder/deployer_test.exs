@@ -26,6 +26,12 @@ defmodule Defdo.TailwindBuilder.DeployerTest do
       dist
     end
 
+    defp oxide_tgz(tmp, platform) do
+      root_dist = Path.join([tmp, "tailwindcss-4.3.3", "dist"])
+      File.mkdir_p!(root_dist)
+      Path.join(root_dist, "tailwindcss-oxide-#{platform}.tgz")
+    end
+
     defp dry_deploy(tmp, extra) do
       Deployer.deploy(
         [
@@ -47,11 +53,22 @@ defmodule Defdo.TailwindBuilder.DeployerTest do
     test "explicit target_key selects only the requested cross-compiled artifact" do
       tmp = temp_dir("deploy_musl")
 
-      write_dist(tmp, "4.3.3", [
-        "tailwindcss-linux-x64",
-        "tailwindcss-linux-x64-musl",
-        "tailwindcss-macos-arm64"
-      ])
+      dist =
+        write_dist(tmp, "4.3.3", [
+          "tailwindcss-linux-x64",
+          "tailwindcss-linux-x64-musl",
+          "tailwindcss-macos-arm64"
+        ])
+
+      :ok =
+        :erl_tar.create(
+          String.to_charlist(oxide_tgz(tmp, "linux-x64-musl")),
+          [
+            {~c"package/package.json", ~s|{"name":"@tailwindcss/oxide-linux-x64-musl"}|},
+            {~c"package/tailwindcss-oxide.linux-x64-musl.node", "native-binding"}
+          ],
+          [:compressed]
+        )
 
       assert {:ok, result} = dry_deploy(tmp, target_key: "linux-x64-musl")
       assert result.binaries_deployed == 1
@@ -82,6 +99,65 @@ defmodule Defdo.TailwindBuilder.DeployerTest do
       assert result.binaries_deployed == 1
       assert [%{target_key: key}] = result.manifest.files
       assert key == Targets.canonical_target_key(ArchitectureMatrix.get_host_architecture())
+    end
+
+    test "musl target_key without an oxide binding fails before upload" do
+      tmp = temp_dir("deploy_musl_no_oxide")
+
+      dist =
+        Path.join([tmp, "tailwindcss-4.3.3", "packages", "@tailwindcss-standalone", "dist"])
+
+      File.mkdir_p!(dist)
+      write_file(dist, "tailwindcss-linux-x64-musl", "fake-musl-binary")
+
+      # An oxide package with no .node entry, like the broken v4.3.3 artifacts.
+      :ok =
+        :erl_tar.create(
+          String.to_charlist(oxide_tgz(tmp, "linux-x64-musl")),
+          [{~c"package/package.json", ~s|{"name":"@tailwindcss/oxide-linux-x64-musl"}|}],
+          [:compressed]
+        )
+
+      assert {:error, {:oxide_binding, {:error, {:oxide_binding_missing, "linux-x64-musl"}}}} =
+               dry_deploy(tmp, target_key: "linux-x64-musl")
+    end
+
+    test "musl target_key with an oxide binding passes the gate" do
+      tmp = temp_dir("deploy_musl_with_oxide")
+
+      dist =
+        Path.join([tmp, "tailwindcss-4.3.3", "packages", "@tailwindcss-standalone", "dist"])
+
+      File.mkdir_p!(dist)
+      write_file(dist, "tailwindcss-linux-x64-musl", "fake-musl-binary")
+
+      :ok =
+        :erl_tar.create(
+          String.to_charlist(oxide_tgz(tmp, "linux-x64-musl")),
+          [
+            {~c"package/package.json", ~s|{"name":"@tailwindcss/oxide-linux-x64-musl"}|},
+            {~c"package/tailwindcss-oxide.linux-x64-musl.node", "native-binding"}
+          ],
+          [:compressed]
+        )
+
+      assert {:ok, result} = dry_deploy(tmp, target_key: "linux-x64-musl")
+      assert result.binaries_deployed == 1
+    end
+
+    test "missing oxide package for a musl target fails as package_not_found" do
+      tmp = temp_dir("deploy_musl_no_pkg")
+
+      dist =
+        Path.join([tmp, "tailwindcss-4.3.3", "packages", "@tailwindcss-standalone", "dist"])
+
+      File.mkdir_p!(dist)
+      write_file(dist, "tailwindcss-linux-arm64-musl", "fake-musl-binary")
+
+      assert {:error,
+              {:oxide_binding,
+               {:error, {:oxide_binding_missing, "linux-arm64-musl", :package_not_found}}}} =
+               dry_deploy(tmp, target_key: "linux-arm64-musl")
     end
   end
 

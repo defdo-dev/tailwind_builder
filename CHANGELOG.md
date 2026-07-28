@@ -2,6 +2,25 @@
 
 ## [Unreleased]
 
+## [0.2.31]
+
+### Added
+- Oxide musl toolchain: musl jobs now cross-compile the oxide native binding
+  with napi `--cross-compile` (cargo-zigbuild + zig) and stage it into the npm
+  subpackage the standalone bundle embeds, with fail-fast toolchain checks
+  (rustup target, zigbuild presence). Base image gains zig 0.15.2 +
+  cargo-zigbuild 0.23.0 + the musl rust targets.
+- Deploy-time oxide-binding validation: a musl-targeted deploy refuses to
+  upload when the oxide package lacks a `.node` binding — the check that
+  would have caught the broken v4.3.3 musl artifacts without a musl host.
+- `Core.Targets.napi_platform_package/1` maps rust triples to oxide npm
+  subpackage names.
+
+### Fixed
+- Corrected the wrong "statically-linked musl runs on gnu" comments: the musl
+  binary is dynamically linked against libc.musl and cannot run on the gnu
+  build host; validity comes from the oxide-binding check, not execution.
+
 ## [0.2.30]
 
 ### Added

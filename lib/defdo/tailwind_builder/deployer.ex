@@ -83,6 +83,8 @@ defmodule Defdo.TailwindBuilder.Deployer do
            {:find_binaries, find_distributable_binaries(source_path, version)},
          {:filter_binaries, {:ok, binaries}} <-
            {:filter_binaries, filter_binaries_for_deploy(binaries, version, opts)},
+         {:oxide_binding, :ok} <-
+           {:oxide_binding, validate_musl_oxide_binding(source_path, version, opts)},
          {:validate, :ok} <- {:validate, maybe_validate_binaries(binaries, validate_binaries)},
          {:smoke_test, {:ok, smoke_test_results}} <-
            {:smoke_test,
@@ -1383,6 +1385,66 @@ defmodule Defdo.TailwindBuilder.Deployer do
 
   defp target_key_matches?(binary_arch, requested) do
     Targets.canonical_target_key(binary_arch) == Targets.canonical_target_key(requested)
+  end
+
+  # A musl artifact cannot be smoke-tested on the gnu build host (it is
+  # dynamically linked against libc.musl), so the ONLY thing standing between
+  # a broken musl binary and publish is this check: the oxide npm subpackage
+  # for the requested musl target must contain the native `.node` binding.
+  # The first musl release shipped without it and died at runtime
+  # (`oxide.Scanner` undefined) — build:platform compiles the host binding
+  # only.
+  defp validate_musl_oxide_binding(source_path, version, opts) do
+    with target_key when is_binary(target_key) <- Keyword.get(opts, :target_key),
+         build_target when is_binary(build_target) <- Targets.build_target(target_key),
+         true <- String.contains?(build_target, "musl") do
+      platform = napi_platform_package(build_target)
+
+      # The oxide npm packages are packed into the ROOT dist (`pnpm run build`
+      # workspace pack), not the standalone dist that holds the CLI binaries.
+      tgz =
+        Path.join([
+          source_path,
+          "tailwindcss-#{version}",
+          "dist",
+          "tailwindcss-oxide-#{platform}.tgz"
+        ])
+
+      cond do
+        not File.exists?(tgz) ->
+          {:error, {:oxide_binding_missing, target_key, :package_not_found}}
+
+        oxide_package_has_binding?(tgz) ->
+          :ok
+
+        true ->
+          {:error, {:oxide_binding_missing, target_key}}
+      end
+    else
+      _ -> :ok
+    end
+  end
+
+  # napi npm subpackage names flatten the rust triple: x86_64-unknown-linux-musl
+  # -> linux-x64-musl, aarch64-unknown-linux-musl -> linux-arm64-musl.
+  defp napi_platform_package(build_target) do
+    case build_target do
+      "x86_64-unknown-linux-musl" -> "linux-x64-musl"
+      "aarch64-unknown-linux-musl" -> "linux-arm64-musl"
+      other -> other
+    end
+  end
+
+  defp oxide_package_has_binding?(tgz) do
+    case :erl_tar.extract(String.to_charlist(tgz), [:memory, :compressed]) do
+      {:ok, entries} ->
+        Enum.any?(entries, fn {name, _content} ->
+          name |> to_string() |> String.ends_with?(".node")
+        end)
+
+      {:error, _} ->
+        false
+    end
   end
 
   defp format_file_info({:ok, deployed_info}, opts) do
