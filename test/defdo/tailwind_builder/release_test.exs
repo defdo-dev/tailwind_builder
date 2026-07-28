@@ -208,6 +208,67 @@ defmodule Defdo.TailwindBuilder.ReleaseTest do
       end
     end
 
+    test "accepts and forwards :target_key to the deployer (musl sibling jobs)" do
+      parent = self()
+      source_path = temp_dir("release_target_key")
+      on_exit(fn -> File.rm_rf(source_path) end)
+
+      with_mocks([
+        {Defdo.TailwindBuilder.Downloader, [],
+         [
+           download_and_extract: fn opts ->
+             {:ok,
+              %{
+                version: opts[:version],
+                destination: opts[:destination],
+                extracted_path: Path.join(opts[:destination], "tailwindcss-#{opts[:version]}")
+              }}
+           end
+         ]},
+        {Defdo.TailwindBuilder.PluginManager, [],
+         [
+           apply_plugin: fn _plugin_spec, opts ->
+             {:ok, %{plugin: "daisyui", version: opts[:version], files_patched: 2}}
+           end
+         ]},
+        {Defdo.TailwindBuilder.Builder, [],
+         [
+           compile: fn opts ->
+             {:ok,
+              %{
+                version: opts[:version],
+                source_path: opts[:source_path],
+                standalone_root: Path.join(opts[:source_path], "dist")
+              }}
+           end
+         ]},
+        {Defdo.TailwindBuilder.Deployer, [],
+         [
+           deploy: fn opts ->
+             send(parent, {:deploy_opts, opts})
+             {:ok, %{binaries_deployed: 1, manifest: %{}, sha256sums: "abc"}}
+           end
+         ]}
+      ]) do
+        assert {:ok, _result} =
+                 Release.run(
+                   version: "4.3.3",
+                   release_channel: "v4.3.3-rc1",
+                   source_path: source_path,
+                   config_provider: TestingConfigProvider,
+                   destination: :r2,
+                   bucket: "defdo",
+                   prefix: "tailwind_cli_daisyui_ci_canary",
+                   storage_base_url: "https://storage.defdo.de",
+                   plugins: ["daisyui_v5"],
+                   target_key: "linux-x64-musl"
+                 )
+
+        assert_received {:deploy_opts, deploy_opts}
+        assert deploy_opts[:target_key] == "linux-x64-musl"
+      end
+    end
+
     test "returns plugin errors before downloading when a plugin is unsupported" do
       source_path = temp_dir("release_plugin_error")
       on_exit(fn -> File.rm_rf(source_path) end)

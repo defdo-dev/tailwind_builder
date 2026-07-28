@@ -2,6 +2,13 @@
 
 ## [Unreleased]
 
+## [0.2.27]
+
+### Fixed
+- `Release.run/1` accepts `:target_key` in its option allow-list — 0.2.26 added
+  the flag but `Keyword.validate!/2` rejected it, failing musl jobs with
+  `unknown keys [:target_key]` before the build started.
+
 ## [0.2.26]
 
 ### Added

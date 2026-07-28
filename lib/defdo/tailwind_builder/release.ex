@@ -55,7 +55,8 @@ defmodule Defdo.TailwindBuilder.Release do
         :source_checksum,
         :release_fingerprint,
         :merge_manifest,
-        :compose_targets
+        :compose_targets,
+        :target_key
       ])
 
     version = Keyword.get(opts, :version, @default_version)
@@ -147,10 +148,10 @@ defmodule Defdo.TailwindBuilder.Release do
               tailwind_version: Keyword.get(opts, :tailwind_version, version),
               tailwind_cli_version: Keyword.get(opts, :tailwind_cli_version, version),
               source_checksum: Keyword.get(opts, :source_checksum),
-               release_fingerprint: Keyword.get(opts, :release_fingerprint),
-               merge_manifest: Keyword.get(opts, :merge_manifest, true),
-               compose_targets: Keyword.get(opts, :compose_targets),
-               target_key: Keyword.get(opts, :target_key)
+              release_fingerprint: Keyword.get(opts, :release_fingerprint),
+              merge_manifest: Keyword.get(opts, :merge_manifest, true),
+              compose_targets: Keyword.get(opts, :compose_targets),
+              target_key: Keyword.get(opts, :target_key)
             )} do
       {:ok,
        %{
