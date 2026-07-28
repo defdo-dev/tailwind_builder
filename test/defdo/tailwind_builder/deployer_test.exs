@@ -85,6 +85,155 @@ defmodule Defdo.TailwindBuilder.DeployerTest do
     end
   end
 
+  describe "browser pack artifact" do
+    @plugin_set [
+      %{name: "daisyui", version: "5.7.4", plugin_key: "daisyui_v5"},
+      %{name: "tw-animate-css", version: "1.4.0", plugin_key: "tw_animate_css"}
+    ]
+
+    defp fake_pack(tmp) do
+      path = write_file(tmp, "tailwind-browser-pack.mjs", "// pack bundle\n")
+
+      %{
+        filename: "tailwind-browser-pack.mjs",
+        contract: 1,
+        local_path: path,
+        sha256: :crypto.hash(:sha256, "// pack bundle\n") |> Base.encode16(case: :lower),
+        size_bytes: File.stat!(path).size,
+        tailwind_version: "4.3.3",
+        plugin_set: @plugin_set
+      }
+    end
+
+    test "dry-run deploy adds the browser_pack manifest entry and sums line" do
+      tmp = temp_dir("deploy_pack")
+
+      dist =
+        Path.join([tmp, "tailwindcss-4.3.3", "packages", "@tailwindcss-standalone", "dist"])
+
+      File.mkdir_p!(dist)
+      host_artifact = Targets.artifact_name(ArchitectureMatrix.get_host_architecture())
+      write_file(dist, host_artifact, "fake-binary")
+
+      pack = fake_pack(tmp)
+
+      assert {:ok, result} =
+               Deployer.deploy(
+                 version: "4.3.3",
+                 source_path: tmp,
+                 destination: :r2,
+                 browser_pack: pack,
+                 validate_binaries: false,
+                 smoke_test_binaries: false,
+                 dry_run: true,
+                 prefix: "test",
+                 bucket: "defdo"
+               )
+
+      entry = result.manifest.browser_pack
+      assert entry.filename == "tailwind-browser-pack.mjs"
+      assert entry.contract == 1
+      assert entry.sha256 == pack.sha256
+      assert entry.tailwind_version == "4.3.3"
+      assert entry.plugin_set == @plugin_set
+      assert entry.storage_url =~ "/test/v4.3.3/tailwind-browser-pack.mjs"
+
+      assert result.sha256sums =~ "#{pack.sha256}  tailwind-browser-pack.mjs"
+      # The pack is not a target binary and never joins the files list.
+      assert [%{filename: ^host_artifact}] = result.manifest.files
+    end
+
+    test "deploy without a pack emits no browser_pack key" do
+      tmp = temp_dir("deploy_no_pack")
+
+      dist =
+        Path.join([tmp, "tailwindcss-4.3.3", "packages", "@tailwindcss-standalone", "dist"])
+
+      File.mkdir_p!(dist)
+      write_file(dist, Targets.artifact_name(ArchitectureMatrix.get_host_architecture()), "bin")
+
+      assert {:ok, result} =
+               Deployer.deploy(
+                 version: "4.3.3",
+                 source_path: tmp,
+                 destination: :r2,
+                 validate_binaries: false,
+                 smoke_test_binaries: false,
+                 dry_run: true,
+                 prefix: "test",
+                 bucket: "defdo"
+               )
+
+      refute Map.has_key?(result.manifest, :browser_pack)
+      refute result.sha256sums =~ "browser-pack"
+    end
+
+    test "publish_browser_pack merges into an existing channel, preserving binary sums" do
+      tmp = temp_dir("publish_pack")
+      pack = fake_pack(tmp)
+
+      manifest_before =
+        Jason.encode!(%{
+          "version" => "4.3.3",
+          "files" => [
+            %{
+              "filename" => "tailwindcss-macos-arm64",
+              "checksum_sha256" => "aaaa"
+            }
+          ]
+        })
+
+      sums_before = "aaaa  tailwindcss-macos-arm64\nbbbb  tailwindcss-linux-x64"
+
+      fetcher = fn
+        "https://storage.defdo.de/tailwind_cli_daisyui/v4.3.3/manifest.json" ->
+          {:ok, manifest_before}
+
+        "https://storage.defdo.de/tailwind_cli_daisyui/v4.3.3/sha256sums.txt" ->
+          {:ok, sums_before}
+      end
+
+      assert {:ok, result} =
+               Deployer.publish_browser_pack(pack,
+                 version: "4.3.3",
+                 release_channel: "v4.3.3",
+                 prefix: "tailwind_cli_daisyui",
+                 fetcher: fetcher,
+                 dry_run: true
+               )
+
+      entry = result.manifest_after["browser_pack"]
+      assert entry.filename == "tailwind-browser-pack.mjs"
+      assert entry.contract == 1
+      assert entry.sha256 == pack.sha256
+
+      # Binary lines carried over untouched, pack line appended.
+      assert result.sums_after ==
+               sums_before <> "\n#{pack.sha256}  tailwind-browser-pack.mjs"
+
+      # Idempotent: an identical pack line already present wins.
+      sums_with_pack = sums_before <> "\n#{pack.sha256}  tailwind-browser-pack.mjs"
+
+      fetcher_with_pack = fn
+        "https://storage.defdo.de/tailwind_cli_daisyui/v4.3.3/manifest.json" ->
+          {:ok, manifest_before}
+
+        "https://storage.defdo.de/tailwind_cli_daisyui/v4.3.3/sha256sums.txt" ->
+          {:ok, sums_with_pack}
+      end
+
+      assert {:ok, rerun} =
+               Deployer.publish_browser_pack(pack,
+                 version: "4.3.3",
+                 release_channel: "v4.3.3",
+                 fetcher: fetcher_with_pack,
+                 dry_run: true
+               )
+
+      assert rerun.sums_after == sums_with_pack
+    end
+  end
+
   describe "generate_deployment_manifest/3" do
     test "includes canonical target metadata, checksums, and storage urls" do
       dir = temp_dir("deployer_manifest")

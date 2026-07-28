@@ -7,7 +7,9 @@ defmodule Defdo.TailwindBuilder.Release do
   require Logger
 
   alias Defdo.TailwindBuilder.{
+    BrowserPack,
     Builder,
+    Core,
     Deployer,
     Downloader,
     PluginManager
@@ -56,7 +58,8 @@ defmodule Defdo.TailwindBuilder.Release do
         :release_fingerprint,
         :merge_manifest,
         :compose_targets,
-        :target_key
+        :target_key,
+        :browser_pack
       ])
 
     version = Keyword.get(opts, :version, @default_version)
@@ -123,6 +126,16 @@ defmodule Defdo.TailwindBuilder.Release do
               timeout: build_timeout,
               validate_tools: validate_tools
             )},
+         {:browser_pack, {:ok, browser_pack}} <-
+           {:browser_pack,
+            maybe_build_browser_pack(
+              source_path,
+              version,
+              plugin_set,
+              Keyword.get(opts, :browser_pack, true)
+            )},
+         {:browser_pack_smoke, :ok} <-
+           {:browser_pack_smoke, maybe_smoke_browser_pack(browser_pack, plugin_set)},
          {:deploy, {:ok, deploy_result}} <-
            {:deploy,
             Deployer.deploy(
@@ -132,6 +145,7 @@ defmodule Defdo.TailwindBuilder.Release do
               bucket: bucket,
               prefix: prefix,
               release_channel: release_channel,
+              browser_pack: browser_pack,
               plugin_set: plugin_set,
               storage_base_url: storage_base_url,
               validate_binaries: validate_binaries,
@@ -181,6 +195,12 @@ defmodule Defdo.TailwindBuilder.Release do
 
       {:build, {:error, reason}} ->
         {:error, {:build, reason}}
+
+      {:browser_pack, {:error, reason}} ->
+        {:error, {:browser_pack, reason}}
+
+      {:browser_pack_smoke, {:error, reason}} ->
+        {:error, {:browser_pack_smoke, reason}}
 
       {:deploy, {:error, reason}} ->
         {:error, {:deploy, reason}}
@@ -295,6 +315,51 @@ defmodule Defdo.TailwindBuilder.Release do
   defp log_resolved_plugins(plugin_set) do
     Logger.info("Resolved release plugins: #{format_plugin_set(plugin_set)}")
     :ok
+  end
+
+  # The browser pack is a v4-only artifact: it bundles the tailwindcss JS API
+  # plus the release's resolved plugin set from the installed source tree.
+  defp maybe_build_browser_pack(_source_path, _version, _plugin_set, false), do: {:ok, nil}
+
+  defp maybe_build_browser_pack(source_path, version, plugin_set, true) do
+    case Core.get_version_constraints(version) do
+      %{major_version: :v4} ->
+        pack_specs =
+          Enum.map(plugin_set, fn plugin ->
+            %{
+              name: plugin[:name] || plugin["name"],
+              version: plugin[:version] || plugin["version"],
+              plugin_key: plugin[:plugin_key] || plugin["plugin_key"]
+            }
+          end)
+
+        Logger.info("Building Tailwind browser pack (contract #{BrowserPack.contract()})")
+        BrowserPack.build(source_path, version: version, plugin_set: pack_specs)
+
+      _ ->
+        {:ok, nil}
+    end
+  end
+
+  defp maybe_smoke_browser_pack(nil, _plugin_set), do: :ok
+
+  defp maybe_smoke_browser_pack(pack, _plugin_set) do
+    daisyui_version =
+      case Enum.find(pack.plugin_set, &(&1.plugin_key == "daisyui_v5")) do
+        %{version: version} -> version
+        _ -> nil
+      end
+
+    with {:ok, css} <- BrowserPack.smoke_test(pack.local_path, []),
+         :ok <- BrowserPack.verify_smoke_output(css, daisyui_version) do
+      Logger.info(
+        "Browser pack smoke passed (#{pack.filename}, #{pack.size_bytes} bytes, sha256 #{String.slice(pack.sha256, 0, 12)}…)"
+      )
+
+      :ok
+    else
+      {:error, reason} -> {:error, {:browser_pack_smoke, reason}}
+    end
   end
 
   defp log_applied_plugins(plugin_set) do

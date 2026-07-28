@@ -2,6 +2,27 @@
 
 ## [Unreleased]
 
+## [0.2.28]
+
+### Added
+- Browser pack artifact: `Release.run/1` now builds `tailwind-browser-pack.mjs`
+  (contract 1) for v4 releases — a self-contained ESM bundle of the tailwindcss
+  JS API plus the release's resolved plugin set, smoked under node (`.btn` rule
+  + exact daisyUI banner; unknown `@import`/`@plugin` ids throw naming the id
+  and the bundled set). Deployer uploads it next to the binaries and emits a
+  top-level `browser_pack` manifest entry {filename, contract, sha256,
+  size_bytes, tailwind_version, plugin_set, storage_url} plus a sha256sums
+  line. Dry-run includes it. `browser_pack: false` opts out.
+- `Deployer.publish_browser_pack/2`: add a pack to an EXISTING channel —
+  uploads only the pack file and merges the manifest entry + sums line
+  idempotently, leaving every binary checksum line untouched.
+
+### Fixed
+- Pack stylesheet map answers the RELATIVE `@import` forms (`./theme.css`,
+  `./preflight.css`, `./utilities.css`) that `tailwindcss/index.css`
+  contains, and tw-animate-css bundles via its relative vendored path (its
+  exports map only exposes the `style` condition).
+
 ## [0.2.27]
 
 ### Fixed
