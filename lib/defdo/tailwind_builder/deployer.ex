@@ -1743,7 +1743,16 @@ defmodule Defdo.TailwindBuilder.Deployer do
     src_manifest_url = "#{base_url}/#{src_prefix}/#{channel}/manifest.json"
 
     with {:ok, manifest} <- fetcher.(src_manifest_url),
-         {:ok, decoded} <- decode_manifest(manifest) do
+         {:ok, decoded} <- decode_manifest(manifest),
+         :ok <-
+           guard_promotion_files(
+             decoded["files"] || [],
+             Keyword.merge(opts,
+               prefix: src_prefix,
+               storage_base_url: base_url,
+               release_channel: channel
+             )
+           ) do
       req = storage_req()
       files = decoded["files"] || []
       target_keys = files |> Enum.map(& &1["target_key"]) |> Enum.reject(&is_nil/1)
@@ -1781,6 +1790,62 @@ defmodule Defdo.TailwindBuilder.Deployer do
   # Strip a canary pre-release suffix (-rc1, -beta2, …) so production uses the
   # bare Tailwind release tag; leave already-bare tags untouched.
   defp prod_channel(channel), do: Regex.replace(~r/-(rc|beta|alpha)\d*$/i, channel, "")
+
+  # Promotion gate: the manifest's file list is the only thing standing
+  # between a bad canary artifact and prod. Refuse what is detectably wrong —
+  # an explicitly failed plugin smoke, or a file entry whose object does not
+  # exist — and log loudly on unprobed artifacts (expected for cross-compiled
+  # targets the build host cannot execute; allowed, but never silent).
+  defp guard_promotion_files(files, opts) do
+    failed =
+      for file <- files,
+          check <- file["plugin_checks"] || [],
+          check["status"] == "failed" do
+        %{filename: file["filename"], plugin: check["plugin"], status: check["status"]}
+      end
+
+    unreachable = Enum.reject(files, &promotion_artifact_reachable?(&1, opts))
+
+    unprobed =
+      files
+      |> Enum.filter(fn file -> file["plugin_checks"] in [nil, []] end)
+      |> Enum.map(& &1["filename"])
+
+    if unprobed != [] do
+      Logger.warning(
+        "Promotion includes unprobed artifacts (no plugin smoke evidence): #{Enum.join(unprobed, ", ")}"
+      )
+    end
+
+    cond do
+      failed != [] ->
+        {:error, {:promotion_blocked, {:failed_plugin_checks, failed}}}
+
+      unreachable != [] ->
+        {:error,
+         {:promotion_blocked, {:artifacts_unreachable, Enum.map(unreachable, & &1["filename"])}}}
+
+      true ->
+        :ok
+    end
+  end
+
+  defp promotion_artifact_reachable?(file, opts) do
+    checker = Keyword.get(opts, :head_checker, &default_head_checker/1)
+
+    url =
+      file["storage_url"] ||
+        build_storage_url(artifact_remote_key(file["filename"], opts, nil), opts)
+
+    is_binary(url) and checker.(url)
+  end
+
+  defp default_head_checker(url) do
+    case Req.head(url, receive_timeout: 15_000) do
+      {:ok, %{status: status}} when status in 200..299 -> true
+      _ -> false
+    end
+  end
 
   @doc """
   Publish a browser pack into an EXISTING channel without touching the

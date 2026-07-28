@@ -2,6 +2,15 @@
 
 ## [Unreleased]
 
+## [0.2.30]
+
+### Added
+- Promotion file gate in `Deployer.promote_channel/1`: refuses to promote a
+  manifest containing an explicitly failed `plugin_checks` entry or a file
+  whose artifact is unreachable (HEAD), and logs loudly on unprobed artifacts
+  (expected for cross-compiled targets, never silent). A known-broken canary
+  artifact no longer depends on human memory to stay out of prod.
+
 ## [0.2.29]
 
 ### Fixed
