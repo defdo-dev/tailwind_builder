@@ -41,7 +41,11 @@ defmodule Defdo.TailwindBuilder.TargetsTest do
     test "gnu and musl keys are distinct targets" do
       refute Targets.matches?("linux-x64", "linux-x64-musl")
       assert Targets.canonical_target_key("linux-x64") == "linux-x64"
-      assert Targets.canonical_target_key("tailwindcss-linux-x64-musl" |> Targets.target_key_from_filename()) ==
+
+      assert Targets.canonical_target_key(
+               "tailwindcss-linux-x64-musl"
+               |> Targets.target_key_from_filename()
+             ) ==
                "linux-x64-musl"
     end
 

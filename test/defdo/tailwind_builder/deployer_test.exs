@@ -55,6 +55,7 @@ defmodule Defdo.TailwindBuilder.DeployerTest do
 
       assert {:ok, result} = dry_deploy(tmp, target_key: "linux-x64-musl")
       assert result.binaries_deployed == 1
+
       assert [%{target_key: "linux-x64-musl", filename: "tailwindcss-linux-x64-musl"}] =
                result.manifest.files
     end
