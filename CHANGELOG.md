@@ -2,6 +2,14 @@
 
 ## [Unreleased]
 
+## [0.2.32]
+
+### Fixed
+- Base image build: cargo-zigbuild 0.23.0 has no `--version` flag (verify via
+  `--help`) — 0.2.31's verify step killed both arch builds; same correction in
+  the runtime zigbuild check musl jobs run. Reproduced and re-verified with
+  the real buildctl path before tagging.
+
 ## [0.2.31]
 
 ### Added
