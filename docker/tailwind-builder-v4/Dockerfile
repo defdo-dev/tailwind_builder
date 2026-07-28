@@ -69,7 +69,27 @@ RUN curl -fsSL https://sh.rustup.rs | \
 
 # wasm32 target: the workspace build runs the oxide crate's `build:wasm`
 # (napi build --target wasm32-wasip1-threads), so this target is required.
-RUN rustup target add wasm32-wasip1-threads
+# musl targets: musl jobs cross-compile the oxide binding with
+# `napi build --cross-compile --target {x86_64,aarch64}-unknown-linux-musl`.
+# The base stays gnu — only the artifact is musl.
+RUN rustup target add wasm32-wasip1-threads \
+    && rustup target add x86_64-unknown-linux-musl \
+    && rustup target add aarch64-unknown-linux-musl
+
+# zig + cargo-zigbuild: the musl cross toolchain. Plain musl-gcc linking fails
+# (no libgcc_s for musl) and +crt-static cannot produce cdylib; zigbuild is
+# napi-rs' supported musl path — zig bundles musl libc + compiler-rt. Proven
+# against tailwindcss 4.3.3 on the amd64 fleet pod (valid ELF64 musl .node,
+# NEEDED only libc.so). Versions pinned for reproducibility.
+ARG ZIG_VERSION=0.15.2
+ARG CARGO_ZIGBUILD_VERSION=0.23.0
+RUN ARCH=$(uname -m | sed 's/x86_64/x86_64/;s/aarch64/aarch64/') && \
+    curl -fsSL "https://ziglang.org/download/${ZIG_VERSION}/zig-${ARCH}-linux-${ZIG_VERSION}.tar.xz" \
+    | tar -xJ -C /opt && \
+    ln -s "/opt/zig-${ARCH}-linux-${ZIG_VERSION}/zig" /usr/local/bin/zig && \
+    zig version && \
+    cargo install cargo-zigbuild --locked --version "${CARGO_ZIGBUILD_VERSION}" && \
+    cargo zigbuild --version
 
 # WASI SDK: the C/link half of the wasm build. napi-rs invokes
 # $WASI_SDK_PATH/bin/clang + wasm-ld against the wasi sysroot to produce the
@@ -104,6 +124,7 @@ RUN elixir --version && \
     pnpm --version && \
     rustc --version && \
     cargo --version && \
-    bun --version
+    bun --version && \
+    zig version
 
 WORKDIR /workspace

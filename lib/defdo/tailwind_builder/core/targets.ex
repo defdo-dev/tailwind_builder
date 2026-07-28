@@ -234,12 +234,25 @@ defmodule Defdo.TailwindBuilder.Core.Targets do
   Return the musl variant a gnu Linux host can also satisfy from the same
   standalone dist, or `nil`. The Bun standalone build cross-compiles the musl
   artifact on every host, so a gnu Linux worker truthfully fulfils its musl
-  sibling — and the statically-linked musl binary still runs on gnu, so the
-  post-build smoke test works unchanged.
+  sibling. The musl binary itself is dynamically linked against libc.musl and
+  does NOT run on the gnu host — post-build smoke is skipped by design and
+  validity is enforced by the oxide-binding check in the deploy step
+  (`Deployer`), not by execution.
   """
   def musl_sibling("linux-x64"), do: "linux-x64-musl"
   def musl_sibling("linux-arm64"), do: "linux-arm64-musl"
   def musl_sibling(_target_key), do: nil
+
+  @doc """
+  Map a rust target triple to the napi npm subpackage name used by
+  @tailwindcss/oxide (x86_64-unknown-linux-musl -> linux-x64-musl). Returns
+  the input unchanged when no mapping applies.
+  """
+  def napi_platform_package("x86_64-unknown-linux-musl"), do: "linux-x64-musl"
+  def napi_platform_package("aarch64-unknown-linux-musl"), do: "linux-arm64-musl"
+  def napi_platform_package("x86_64-unknown-linux-gnu"), do: "linux-x64-gnu"
+  def napi_platform_package("aarch64-unknown-linux-gnu"), do: "linux-arm64-gnu"
+  def napi_platform_package(other), do: other
 
   @doc """
   Return the published artifact filename for a target.

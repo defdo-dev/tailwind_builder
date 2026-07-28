@@ -124,7 +124,8 @@ defmodule Defdo.TailwindBuilder.Release do
               source_path: source_path,
               debug: debug,
               timeout: build_timeout,
-              validate_tools: validate_tools
+              validate_tools: validate_tools,
+              target_key: Keyword.get(opts, :target_key)
             )},
          {:browser_pack, {:ok, browser_pack}} <-
            {:browser_pack,

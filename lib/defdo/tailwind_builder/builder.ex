@@ -64,7 +64,8 @@ defmodule Defdo.TailwindBuilder.Builder do
         :source_path,
         :debug,
         :timeout,
-        :validate_tools
+        :validate_tools,
+        :target_key
       ])
 
     version = opts[:version] || raise ArgumentError, "version is required"
@@ -97,7 +98,8 @@ defmodule Defdo.TailwindBuilder.Builder do
          # on a builder that reuses a deterministic temp path, a stale `dist/` from an earlier run
          # would have been checksummed, smoke-tested and published as freshly built.
          {:compile, {:ok, compilation_result}} <-
-           {:compile, execute_compilation_with_telemetry(version, paths, debug, timeout)} do
+           {:compile,
+            execute_compilation_with_telemetry(version, paths, debug, timeout, opts[:target_key])} do
       Logger.debug("Compilation result: #{inspect(compilation_result)}")
 
       end_time = System.monotonic_time()
@@ -411,7 +413,7 @@ defmodule Defdo.TailwindBuilder.Builder do
     result
   end
 
-  defp execute_compilation_with_telemetry(version, paths, debug, timeout) do
+  defp execute_compilation_with_telemetry(version, paths, debug, timeout, target_key) do
     start_time = System.monotonic_time()
     compilation_method = Core.get_compilation_method(version)
 
@@ -422,7 +424,7 @@ defmodule Defdo.TailwindBuilder.Builder do
       tailwind_root: paths.tailwind_root
     })
 
-    result = execute_compilation(version, paths, debug, timeout)
+    result = execute_compilation(version, paths, debug, timeout, target_key)
 
     end_time = System.monotonic_time()
     duration_ms = System.convert_time_unit(end_time - start_time, :native, :millisecond)
@@ -528,12 +530,12 @@ defmodule Defdo.TailwindBuilder.Builder do
       (is_nil(paths.standalone_root) or File.exists?(paths.standalone_root))
   end
 
-  defp execute_compilation(version, paths, debug, timeout) do
+  defp execute_compilation(version, paths, debug, timeout, target_key) do
     constraints = Core.get_version_constraints(version)
 
     case constraints.major_version do
       :v3 -> compile_v3(paths, debug, timeout)
-      :v4 -> compile_v4(paths, debug, version, timeout)
+      :v4 -> compile_v4(paths, debug, version, timeout, target_key)
       :v5 -> compile_v5(paths, debug, version, timeout)
       :v6 -> compile_v6(paths, debug, version, timeout)
       _ -> {:error, :unsupported_version}
@@ -551,7 +553,7 @@ defmodule Defdo.TailwindBuilder.Builder do
     execute_compilation_steps(steps, debug, nil, timeout)
   end
 
-  defp compile_v4(paths, debug, version, timeout) do
+  defp compile_v4(paths, debug, version, timeout, target_key) do
     # TailwindCSS v4 uses pnpm workspace + Rust compilation (official method)
     Logger.info("Building TailwindCSS v4 using pnpm workspace + Rust (official method)")
 
@@ -570,6 +572,58 @@ defmodule Defdo.TailwindBuilder.Builder do
       {"pnpm oxide build", "pnpm", ["run", "--filter", "./crates/node", "build:platform"],
        paths.tailwind_root}
 
+    # A musl job needs the oxide native binding for its musl target too —
+    # `build:platform` compiles the host binding only, which is how the first
+    # musl artifacts shipped with an empty oxide package and died at runtime
+    # (`oxide.Scanner` undefined). napi cross-compiles the binding with
+    # cargo-zigbuild (zig bundles musl libc + compiler-rt — no libgcc_s needed,
+    # and cdylib stays supported, unlike +crt-static); the artifact is then
+    # renamed to the platform-suffixed name move-artifacts stages into the npm
+    # subpackage the standalone bundle embeds.
+    musl_oxide_steps =
+      case musl_oxide_target(target_key) do
+        nil ->
+          []
+
+        triple ->
+          platform = Core.Targets.napi_platform_package(triple)
+
+          [
+            # Fail fast with a clear error instead of an obscure cargo one when
+            # the toolchain lacks the musl rust target or zigbuild (needs the
+            # 0.2.31+ base image: rustup target + zig + cargo-zigbuild).
+            {"rustup target check (#{triple})", "sh",
+             [
+               "-c",
+               "rustup target list --installed | grep -qx '#{triple}' || { echo 'missing rust target #{triple} — install with: rustup target add #{triple}'; exit 1; }"
+             ], paths.tailwind_root},
+            {"zigbuild check", "sh",
+             [
+               "-c",
+               "command -v zig >/dev/null && cargo zigbuild --version >/dev/null 2>&1 || { echo 'missing zigbuild toolchain (zig + cargo-zigbuild)'; exit 1; }"
+             ], paths.tailwind_root},
+            {"pnpm oxide build (#{triple})", "pnpm",
+             [
+               "--filter",
+               "./crates/node",
+               "exec",
+               "napi",
+               "build",
+               "--release",
+               "--cross-compile",
+               "--target",
+               triple
+             ], paths.tailwind_root},
+            {"name oxide musl artifact", "sh",
+             [
+               "-c",
+               "test -f tailwindcss-oxide.node && mv tailwindcss-oxide.node tailwindcss-oxide.#{platform}.node || test -f tailwindcss-oxide.#{platform}.node"
+             ], Path.join(paths.tailwind_root, "crates/node")},
+            {"move oxide musl artifacts", "node", ["scripts/move-artifacts.mjs"],
+             Path.join(paths.tailwind_root, "crates/node")}
+          ]
+      end
+
     # Build the entire workspace first
     workspace_build_step = {"pnpm workspace build", "pnpm", ["run", "build"], paths.tailwind_root}
 
@@ -578,7 +632,9 @@ defmodule Defdo.TailwindBuilder.Builder do
       {"bun standalone build", "bun", ["run", "build"],
        Path.join(paths.tailwind_root, "packages/@tailwindcss-standalone")}
 
-    steps = [install_step, oxide_build_step, workspace_build_step, standalone_build_step]
+    steps =
+      [install_step, oxide_build_step] ++
+        musl_oxide_steps ++ [workspace_build_step, standalone_build_step]
 
     execute_compilation_steps(steps, debug, version, timeout)
   end
@@ -609,6 +665,21 @@ defmodule Defdo.TailwindBuilder.Builder do
     ]
 
     execute_compilation_steps(steps, debug, version, timeout)
+  end
+
+  # The musl rust target triple a job's target_key requires an oxide binding
+  # for, or nil. Only musl targets of the host's own arch are claimable, so
+  # the host toolchain always matches.
+  defp musl_oxide_target(nil), do: nil
+
+  defp musl_oxide_target(target_key) do
+    case Core.Targets.build_target(target_key) do
+      triple when is_binary(triple) ->
+        if String.contains?(triple, "musl"), do: triple, else: nil
+
+      _ ->
+        nil
+    end
   end
 
   defp execute_compilation_steps(steps, debug, version, timeout) do
