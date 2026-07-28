@@ -89,7 +89,7 @@ RUN ARCH=$(uname -m | sed 's/x86_64/x86_64/;s/aarch64/aarch64/') && \
     ln -s "/opt/zig-${ARCH}-linux-${ZIG_VERSION}/zig" /usr/local/bin/zig && \
     zig version && \
     cargo install cargo-zigbuild --locked --version "${CARGO_ZIGBUILD_VERSION}" && \
-    cargo zigbuild --version
+    cargo zigbuild --help >/dev/null
 
 # WASI SDK: the C/link half of the wasm build. napi-rs invokes
 # $WASI_SDK_PATH/bin/clang + wasm-ld against the wasi sysroot to produce the

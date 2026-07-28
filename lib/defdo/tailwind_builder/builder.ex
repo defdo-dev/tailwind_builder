@@ -600,7 +600,7 @@ defmodule Defdo.TailwindBuilder.Builder do
             {"zigbuild check", "sh",
              [
                "-c",
-               "command -v zig >/dev/null && cargo zigbuild --version >/dev/null 2>&1 || { echo 'missing zigbuild toolchain (zig + cargo-zigbuild)'; exit 1; }"
+               "command -v zig >/dev/null && cargo zigbuild --help >/dev/null 2>&1 || { echo 'missing zigbuild toolchain (zig + cargo-zigbuild)'; exit 1; }"
              ], paths.tailwind_root},
             {"pnpm oxide build (#{triple})", "pnpm",
              [
