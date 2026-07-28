@@ -24,7 +24,16 @@ defmodule Defdo.TailwindBuilder.Core.Targets do
       artifact_name: "tailwindcss-linux-x64",
       tier: :required,
       tailwind_official: true,
-      aliases: ["linux-x64", "x86_64-unknown-linux-gnu", "x86_64-unknown-linux-musl"]
+      aliases: ["linux-x64", "x86_64-unknown-linux-gnu"]
+    },
+    %{
+      target_key: "linux-x64-musl",
+      legacy_target: "linux-x64-musl",
+      build_target: "x86_64-unknown-linux-musl",
+      artifact_name: "tailwindcss-linux-x64-musl",
+      tier: :optional,
+      tailwind_official: true,
+      aliases: ["linux-x64-musl", "x86_64-unknown-linux-musl"]
     },
     %{
       target_key: "linux-arm64",
@@ -33,7 +42,16 @@ defmodule Defdo.TailwindBuilder.Core.Targets do
       artifact_name: "tailwindcss-linux-arm64",
       tier: :required,
       tailwind_official: true,
-      aliases: ["linux-arm64", "aarch64-unknown-linux-gnu", "aarch64-unknown-linux-musl"]
+      aliases: ["linux-arm64", "aarch64-unknown-linux-gnu"]
+    },
+    %{
+      target_key: "linux-arm64-musl",
+      legacy_target: "linux-arm64-musl",
+      build_target: "aarch64-unknown-linux-musl",
+      artifact_name: "tailwindcss-linux-arm64-musl",
+      tier: :optional,
+      tailwind_official: true,
+      aliases: ["linux-arm64-musl", "aarch64-unknown-linux-musl"]
     },
     %{
       target_key: "linux-arm",
@@ -211,6 +229,17 @@ defmodule Defdo.TailwindBuilder.Core.Targets do
       normalized.build_target
     end
   end
+
+  @doc """
+  Return the musl variant a gnu Linux host can also satisfy from the same
+  standalone dist, or `nil`. The Bun standalone build cross-compiles the musl
+  artifact on every host, so a gnu Linux worker truthfully fulfils its musl
+  sibling — and the statically-linked musl binary still runs on gnu, so the
+  post-build smoke test works unchanged.
+  """
+  def musl_sibling("linux-x64"), do: "linux-x64-musl"
+  def musl_sibling("linux-arm64"), do: "linux-arm64-musl"
+  def musl_sibling(_target_key), do: nil
 
   @doc """
   Return the published artifact filename for a target.

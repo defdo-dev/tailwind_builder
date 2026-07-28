@@ -68,7 +68,8 @@ defmodule Defdo.TailwindBuilder.Deployer do
         :release_fingerprint,
         :merge_manifest,
         :compose_targets,
-        :manifest_merge_fetcher
+        :manifest_merge_fetcher,
+        :target_key
       ])
 
     version = opts[:version] || raise ArgumentError, "version is required"
@@ -80,7 +81,7 @@ defmodule Defdo.TailwindBuilder.Deployer do
     with {:find_binaries, {:ok, binaries}} <-
            {:find_binaries, find_distributable_binaries(source_path, version)},
          {:filter_binaries, {:ok, binaries}} <-
-           {:filter_binaries, filter_binaries_for_deploy(binaries, version)},
+           {:filter_binaries, filter_binaries_for_deploy(binaries, version, opts)},
          {:validate, :ok} <- {:validate, maybe_validate_binaries(binaries, validate_binaries)},
          {:smoke_test, {:ok, smoke_test_results}} <-
            {:smoke_test,
@@ -1163,18 +1164,22 @@ defmodule Defdo.TailwindBuilder.Deployer do
     end
   end
 
-  defp filter_binaries_for_deploy(binaries, version) do
+  defp filter_binaries_for_deploy(binaries, version, opts) do
     case Core.get_version_constraints(version) do
       %{major_version: :v4} ->
-        host_arch = Core.get_host_architecture()
+        requested = Keyword.get(opts, :target_key)
 
         filtered =
           Enum.filter(binaries, fn %{architecture: arch} ->
-            match_architecture?(arch, host_arch)
+            if requested do
+              target_key_matches?(arch, requested)
+            else
+              match_architecture?(arch, Core.get_host_architecture())
+            end
           end)
 
         case filtered do
-          [] -> {:error, {:no_binaries_for_host, host_arch}}
+          [] -> {:error, {:no_binaries_for_host, requested || Core.get_host_architecture()}}
           list -> {:ok, list}
         end
 
@@ -1285,6 +1290,10 @@ defmodule Defdo.TailwindBuilder.Deployer do
 
   defp match_architecture?(binary_arch, host_arch) do
     Targets.matches?(binary_arch, host_arch)
+  end
+
+  defp target_key_matches?(binary_arch, requested) do
+    Targets.canonical_target_key(binary_arch) == Targets.canonical_target_key(requested)
   end
 
   defp format_file_info({:ok, deployed_info}, opts) do
