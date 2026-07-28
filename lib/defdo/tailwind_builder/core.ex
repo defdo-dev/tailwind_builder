@@ -219,22 +219,22 @@ defmodule Defdo.TailwindBuilder.Core do
   def get_architecture_support_matrix do
     %{
       :"linux-x64" => %{
-        supported_versions: ["3.4.17", "4.0.9", "4.1.11"],
+        supported_versions: ["3.4.17", "4.0.9", "4.1.11", "4.3.3"],
         compilation_method: :npm,
         cross_compilation_available: true
       },
       :"linux-arm64" => %{
-        supported_versions: ["3.4.17", "4.0.9", "4.1.11"],
+        supported_versions: ["3.4.17", "4.0.9", "4.1.11", "4.3.3"],
         compilation_method: :npm,
         cross_compilation_available: true
       },
       :"darwin-x64" => %{
-        supported_versions: ["3.4.17", "4.0.9", "4.1.11"],
+        supported_versions: ["3.4.17", "4.0.9", "4.1.11", "4.3.3"],
         compilation_method: :npm,
         cross_compilation_available: true
       },
       :"darwin-arm64" => %{
-        supported_versions: ["3.4.17", "4.0.9", "4.1.11"],
+        supported_versions: ["3.4.17", "4.0.9", "4.1.11", "4.3.3"],
         compilation_method: :npm,
         cross_compilation_available: true
       },

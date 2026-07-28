@@ -21,7 +21,8 @@ defmodule Defdo.TailwindBuilder.Dependencies do
   @tailwind_v4_requirements %{
     "4.0.0" => ["wasm32-wasip1-threads"],
     "4.1.0" => ["wasm32-wasip1-threads"],
-    "4.1.11" => ["wasm32-wasip1-threads"]
+    "4.1.11" => ["wasm32-wasip1-threads"],
+    "4.3.3" => ["wasm32-wasip1-threads"]
   }
 
   defp asdf_version do
