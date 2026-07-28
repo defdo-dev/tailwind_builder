@@ -60,7 +60,8 @@ defmodule Mix.Tasks.Tailwind.Release do
           dry_run: :boolean,
           overwrite_policy: :string,
           compose_targets: :string,
-          merge_manifest: :boolean
+          merge_manifest: :boolean,
+          target_key: :string
         ],
         aliases: [
           v: :version,
@@ -119,7 +120,8 @@ defmodule Mix.Tasks.Tailwind.Release do
         dry_run: dry_run,
         overwrite_policy: parse_overwrite_policy(Keyword.get(opts, :overwrite_policy)),
         merge_manifest: Keyword.get(opts, :merge_manifest, true),
-        compose_targets: parse_compose_targets(Keyword.get(opts, :compose_targets))
+        compose_targets: parse_compose_targets(Keyword.get(opts, :compose_targets)),
+        target_key: Keyword.get(opts, :target_key)
       ]
       |> Enum.reject(fn {_key, value} -> is_nil(value) end)
 

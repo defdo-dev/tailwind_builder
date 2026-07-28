@@ -2,6 +2,20 @@
 
 ## [Unreleased]
 
+## [0.2.26]
+
+### Added
+- First-class musl targets: `linux-x64-musl` and `linux-arm64-musl` are now real
+  `Core.Targets` definitions (optional tier, tailwind-official) instead of musl
+  triples aliased into the gnu targets. The Bun standalone build already
+  cross-compiles these artifacts on every host; they were simply never uploaded.
+- `Release.run/1` and `Deployer.deploy/1` accept `:target_key` to publish only
+  the requested artifact (e.g. a musl sibling job claimed by a gnu Linux
+  worker). Default behavior (host-architecture filter) is unchanged.
+- `Core.Targets.musl_sibling/1` maps a gnu Linux host target to the musl
+  variant it can also satisfy from the same dist.
+- `mix tailwind.release --target-key` flag.
+
 ## [0.2.25]
 
 ### Added

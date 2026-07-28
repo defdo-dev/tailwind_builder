@@ -16,6 +16,74 @@ defmodule Defdo.TailwindBuilder.DeployerTest do
     path
   end
 
+  describe "deploy/1 target_key filter (dry run)" do
+    defp write_dist(tmp, version, filenames) do
+      dist =
+        Path.join([tmp, "tailwindcss-#{version}", "packages", "@tailwindcss-standalone", "dist"])
+
+      File.mkdir_p!(dist)
+      for name <- filenames, do: write_file(dist, name, "fake-binary-#{name}")
+      dist
+    end
+
+    defp dry_deploy(tmp, extra) do
+      Deployer.deploy(
+        [
+          version: "4.3.3",
+          source_path: tmp,
+          destination: :r2,
+          validate_binaries: false,
+          smoke_test_binaries: false,
+          generate_manifest: true,
+          generate_checksums: true,
+          dry_run: true,
+          prefix: "test",
+          bucket: "defdo"
+        ]
+        |> Keyword.merge(extra)
+      )
+    end
+
+    test "explicit target_key selects only the requested cross-compiled artifact" do
+      tmp = temp_dir("deploy_musl")
+
+      write_dist(tmp, "4.3.3", [
+        "tailwindcss-linux-x64",
+        "tailwindcss-linux-x64-musl",
+        "tailwindcss-macos-arm64"
+      ])
+
+      assert {:ok, result} = dry_deploy(tmp, target_key: "linux-x64-musl")
+      assert result.binaries_deployed == 1
+      assert [%{target_key: "linux-x64-musl", filename: "tailwindcss-linux-x64-musl"}] =
+               result.manifest.files
+    end
+
+    test "explicit target_key without a matching artifact fails the filter step" do
+      tmp = temp_dir("deploy_musl_missing")
+      write_dist(tmp, "4.3.3", ["tailwindcss-linux-x64"])
+
+      assert {:error, {:filter_binaries, {:error, {:no_binaries_for_host, "linux-arm64-musl"}}}} =
+               dry_deploy(tmp, target_key: "linux-arm64-musl")
+    end
+
+    test "without target_key the host architecture filter is kept" do
+      tmp = temp_dir("deploy_host_filter")
+      host_artifact = Targets.artifact_name(ArchitectureMatrix.get_host_architecture())
+
+      write_dist(tmp, "4.3.3", [
+        host_artifact,
+        "tailwindcss-linux-x64-musl",
+        "tailwindcss-windows-x64.exe"
+      ])
+
+      assert {:ok, result} = dry_deploy(tmp, [])
+      assert result.binaries_deployed == 1
+      assert [%{target_key: key}] = result.manifest.files
+      assert key == Targets.canonical_target_key(ArchitectureMatrix.get_host_architecture())
+    end
+  end
+
   describe "generate_deployment_manifest/3" do
     test "includes canonical target metadata, checksums, and storage urls" do
       dir = temp_dir("deployer_manifest")
