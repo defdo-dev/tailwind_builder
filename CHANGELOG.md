@@ -2,6 +2,13 @@
 
 ## [Unreleased]
 
+## [0.2.29]
+
+### Fixed
+- `publish_browser_pack/2`: fetch manifest/sums with `decode_body: false` —
+  Req auto-decodes JSON into a map, which broke manifest merging with
+  `:invalid_manifest_body` on the first real publish call.
+
 ## [0.2.28]
 
 ### Added

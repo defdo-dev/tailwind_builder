@@ -1881,7 +1881,7 @@ defmodule Defdo.TailwindBuilder.Deployer do
   defp decode_json(_other), do: {:error, :invalid_manifest_body}
 
   defp default_public_fetch(url) do
-    case Req.get(url, receive_timeout: 30_000) do
+    case Req.get(url, receive_timeout: 30_000, decode_body: false) do
       {:ok, %{status: 200, body: body}} -> {:ok, body}
       {:ok, %{status: status}} -> {:error, {:fetch_failed, status, url}}
       {:error, reason} -> {:error, {:fetch_failed, reason, url}}
