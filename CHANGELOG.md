@@ -2,6 +2,14 @@
 
 ## [Unreleased]
 
+## [0.2.34]
+
+### Fixed
+- `promote_channel/1` copies the browser pack object with the promotion and
+  gate-checks its source reachability — previously the prod manifest would
+  reference the canary pack checksum while the prod object stayed stale (or
+  missing) since the pack is not part of `files[]`.
+
 ## [0.2.33]
 
 ### Fixed

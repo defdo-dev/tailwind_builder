@@ -113,5 +113,38 @@ defmodule Defdo.TailwindBuilder.PromoteTest do
       result = promote_with(files)
       refute match?({:error, {:promotion_blocked, _}}, result)
     end
+
+    test "blocks when the browser pack object is unreachable" do
+      files = [
+        %{
+          "filename" => "tailwindcss-macos-arm64",
+          "storage_url" => "https://storage.defdo.de/x/tailwindcss-macos-arm64",
+          "plugin_checks" => [%{"plugin" => "daisyui", "status" => "verified"}]
+        }
+      ]
+
+      fetcher = fn _url ->
+        {:ok,
+         Jason.encode!(%{
+           "version" => "4.3.3",
+           "files" => files,
+           "browser_pack" => %{
+             "filename" => "tailwind-browser-pack.mjs",
+             "storage_url" => "https://storage.defdo.de/gone/tailwind-browser-pack.mjs"
+           }
+         })}
+      end
+
+      assert {:error,
+              {:promotion_blocked, {:artifacts_unreachable, ["tailwind-browser-pack.mjs"]}}} =
+               Deployer.promote_channel(
+                 channel: "v4.3.3-rc1",
+                 fetcher: fetcher,
+                 head_checker: fn
+                   "https://storage.defdo.de/gone/tailwind-browser-pack.mjs" -> false
+                   _url -> true
+                 end
+               )
+    end
   end
 end
