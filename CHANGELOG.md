@@ -2,6 +2,14 @@
 
 ## [Unreleased]
 
+## [0.2.33]
+
+### Fixed
+- Package `priv/` in the Hex files list — the browser-pack smoke harness
+  (`priv/browser_pack/smoke.mjs`) was missing from the published tarball, so
+  worker-side releases failed at `pack_smoke_failed` (MODULE_NOT_FOUND) after
+  the pack built successfully.
+
 ## [0.2.32]
 
 ### Fixed
