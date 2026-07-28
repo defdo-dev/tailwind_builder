@@ -69,7 +69,8 @@ defmodule Defdo.TailwindBuilder.Deployer do
         :merge_manifest,
         :compose_targets,
         :manifest_merge_fetcher,
-        :target_key
+        :target_key,
+        :browser_pack
       ])
 
     version = opts[:version] || raise ArgumentError, "version is required"
@@ -129,17 +130,24 @@ defmodule Defdo.TailwindBuilder.Deployer do
            {:plan, resolve_overwrite_plan(binaries, dry_run, opts, version)},
          {:deploy_binaries, {:ok, deployed}} <-
            {:deploy_binaries, run_deploy_mode(mode, binaries, destination, version, opts)},
+         {:browser_pack, {:ok, pack_deployed}} <-
+           {:browser_pack,
+            maybe_deploy_browser_pack(mode, Keyword.get(opts, :browser_pack), version, opts)},
          {:verify, {:ok, verification}} <-
-           {:verify, maybe_verify_upload_for(mode, deployed, opts)},
+           {:verify, maybe_verify_upload_for(mode, deployed ++ List.wrap(pack_deployed), opts)},
          {:checksums, {:ok, sha256sums}} <-
            {:checksums, maybe_generate_sha256sums(deployed, ctx.generate_checksums)},
+         {:pack_sums, {:ok, sha256sums}} <-
+           {:pack_sums, {:ok, append_browser_pack_sums(sha256sums, pack_deployed)}},
          {:manifest, {:ok, manifest}} <-
            {:manifest,
             maybe_generate_manifest(
               deployed,
               version,
               ctx.generate_manifest,
-              Keyword.put(opts, :smoke_test_results, ctx.smoke_test_results)
+              opts
+              |> Keyword.put(:smoke_test_results, ctx.smoke_test_results)
+              |> Keyword.put(:browser_pack_deployed, pack_deployed)
             )},
          {:merge_metadata, {:ok, {manifest, sha256sums, extra_metadata}}} <-
            {:merge_metadata,
@@ -271,6 +279,47 @@ defmodule Defdo.TailwindBuilder.Deployer do
   defp maybe_verify_upload_for(:upload, deployed, opts), do: maybe_verify_upload(deployed, opts)
   defp maybe_verify_upload_for(_mode, _deployed, _opts), do: {:ok, nil}
 
+  # Deploy the browser pack artifact next to the binaries. `:upload` pushes the
+  # file; `:dry_run`/`:republish` plan it locally so manifest/checksums still
+  # describe it without a network write. Returns a `{:ok, deployed_info}`
+  # entry shaped like a binary upload, or `nil` when no pack was built.
+  defp maybe_deploy_browser_pack(_mode, nil, _version, _opts), do: {:ok, nil}
+
+  defp maybe_deploy_browser_pack(:upload, pack, version, opts) do
+    bucket = Keyword.get(opts, :bucket, "defdo")
+    prefix = Keyword.get(opts, :prefix, "tailwind_cli_daisyui")
+
+    binary_info = %{path: pack.local_path, filename: pack.filename, size: pack.size_bytes}
+
+    case deploy_single_binary_to_r2(binary_info, bucket, prefix, release_path(opts, version)) do
+      {:ok, deployed} -> {:ok, {:ok, deployed}}
+      {:error, reason} -> {:error, reason}
+    end
+  end
+
+  defp maybe_deploy_browser_pack(mode, pack, version, opts) when mode in [:dry_run, :republish] do
+    {:ok,
+     {:ok,
+      %{
+        local_path: pack.local_path,
+        remote_key: artifact_remote_key(pack.filename, opts, version),
+        bucket: Keyword.get(opts, :bucket, "defdo"),
+        size: pack.size_bytes
+      }}}
+  end
+
+  defp append_browser_pack_sums(sha256sums, pack_deployed)
+
+  defp append_browser_pack_sums(nil, _pack_deployed), do: nil
+
+  defp append_browser_pack_sums(sha256sums, {:ok, deployed}) do
+    filename = Path.basename(deployed.local_path)
+    checksum = sha256_for_file!(deployed.local_path)
+    sha256sums <> "\n#{checksum}  #{filename}"
+  end
+
+  defp append_browser_pack_sums(sha256sums, _no_pack), do: sha256sums
+
   defp maybe_publish_metadata(:dry_run, _destination, _version, _manifest, _sums, _extra, _opts) do
     {:ok, []}
   end
@@ -398,9 +447,49 @@ defmodule Defdo.TailwindBuilder.Deployer do
       plugin_set: plugin_set
     }
 
+    manifest = put_browser_pack_entry(manifest, opts, version)
+
     case Keyword.get(opts, :format, :map) do
       :json -> {:ok, Jason.encode!(manifest, pretty: true)}
       :map -> {:ok, manifest}
+    end
+  end
+
+  # Contract v1 manifest entry for the browser pack. Present only when the
+  # release built a pack; consumers resolve the pack URL + checksum from here.
+  # Matches the manifest's key style (atom keys in memory, string keys when
+  # merging into a fetched JSON manifest).
+  defp put_browser_pack_entry(manifest, opts, version) do
+    case {Keyword.get(opts, :browser_pack), Keyword.get(opts, :browser_pack_deployed)} do
+      {nil, _} ->
+        manifest
+
+      {pack, pack_deployed} ->
+        sha256 =
+          case pack_deployed do
+            {:ok, deployed} -> sha256_for_file!(deployed.local_path)
+            _ -> Map.get(pack, :sha256)
+          end
+
+        opts = Keyword.put_new(opts, :storage_base_url, "https://storage.defdo.de")
+        remote_key = artifact_remote_key(pack.filename, opts, version)
+
+        entry = %{
+          filename: pack.filename,
+          contract: pack.contract,
+          sha256: sha256,
+          size_bytes: pack.size_bytes,
+          tailwind_version: pack.tailwind_version,
+          plugin_set: pack.plugin_set,
+          remote_key: remote_key,
+          storage_url: build_storage_url(remote_key, opts)
+        }
+
+        if is_map_key(manifest, "version") do
+          Map.put(manifest, "browser_pack", entry)
+        else
+          Map.put(manifest, :browser_pack, entry)
+        end
     end
   end
 
@@ -1692,6 +1781,131 @@ defmodule Defdo.TailwindBuilder.Deployer do
   # Strip a canary pre-release suffix (-rc1, -beta2, …) so production uses the
   # bare Tailwind release tag; leave already-bare tags untouched.
   defp prod_channel(channel), do: Regex.replace(~r/-(rc|beta|alpha)\d*$/i, channel, "")
+
+  @doc """
+  Publish a browser pack into an EXISTING channel without touching the
+  channel's binaries: uploads only `tailwind-browser-pack.mjs`, then merges the
+  `browser_pack` entry into the remote `manifest.json` and appends the
+  checksum line to `sha256sums.txt` (idempotently). Binary checksum lines are
+  carried over byte-for-byte — the caller verifies they are unchanged.
+
+  `pack` is the map returned by `BrowserPack.build/2`. Options: `:version` or
+  `:release_channel`, `:bucket`, `:prefix`, `:storage_base_url`, `:dry_run`,
+  `:fetcher` (test hook, `url -> {:ok, body} | {:error, reason}`).
+  """
+  @spec publish_browser_pack(map(), keyword()) :: {:ok, map()} | {:error, term()}
+  def publish_browser_pack(pack, opts) do
+    version = Keyword.get(opts, :version)
+    channel = Keyword.get(opts, :release_channel) || "v#{version}"
+    bucket = Keyword.get(opts, :bucket, "defdo")
+    prefix = Keyword.get(opts, :prefix, "tailwind_cli_daisyui")
+    base_url = Keyword.get(opts, :storage_base_url, "https://storage.defdo.de")
+    dry_run = Keyword.get(opts, :dry_run, false)
+    fetcher = Keyword.get(opts, :fetcher, &default_public_fetch/1)
+
+    opts =
+      Keyword.merge(
+        [release_channel: channel, bucket: bucket, prefix: prefix, storage_base_url: base_url],
+        opts
+      )
+
+    pack_url = "#{base_url}/#{prefix}/#{channel}/#{pack.filename}"
+    manifest_url = "#{base_url}/#{prefix}/#{channel}/manifest.json"
+    sums_url = "#{base_url}/#{prefix}/#{channel}/sha256sums.txt"
+
+    with {:ok, manifest_body} <- fetcher.(manifest_url),
+         {:ok, manifest_before} <- decode_json(manifest_body),
+         {:ok, sums_before} <- fetcher.(sums_url),
+         {:ok, pack_deployed} <-
+           maybe_deploy_browser_pack(
+             if(dry_run, do: :dry_run, else: :upload),
+             pack,
+             version,
+             opts
+           ) do
+      manifest_after =
+        put_browser_pack_entry(
+          manifest_before,
+          [browser_pack: pack, browser_pack_deployed: pack_deployed] ++ opts,
+          version
+        )
+
+      sums_after = merge_pack_sum_line(sums_before, pack_deployed)
+
+      with :ok <-
+             maybe_upload_text_objects(dry_run, bucket, [
+               {"#{prefix}/#{channel}/manifest.json",
+                Jason.encode!(manifest_after, pretty: true)},
+               {"#{prefix}/#{channel}/sha256sums.txt", sums_after}
+             ]) do
+        {:ok,
+         %{
+           pack_url: pack_url,
+           sha256: sha256_for_file!(pack.local_path),
+           manifest_before: manifest_before,
+           manifest_after: manifest_after,
+           sums_before: sums_before,
+           sums_after: sums_after,
+           dry_run: dry_run
+         }}
+      end
+    end
+  end
+
+  # Idempotent: a matching `<sha>  <filename>` line already present wins; a
+  # stale line for the same filename is replaced; otherwise the line appends.
+  defp merge_pack_sum_line(sums_before, {:ok, deployed}) do
+    filename = Path.basename(deployed.local_path)
+    checksum = sha256_for_file!(deployed.local_path)
+    line = "#{checksum}  #{filename}"
+
+    lines = String.split(sums_before, "\n", trim: true)
+
+    if Enum.any?(lines, &(&1 == line)) do
+      sums_before
+    else
+      lines
+      |> Enum.reject(&String.ends_with?(&1, "  #{filename}"))
+      |> Kernel.++([line])
+      |> Enum.join("\n")
+    end
+  end
+
+  defp decode_json(body) when is_binary(body) do
+    case Jason.decode(body) do
+      {:ok, decoded} -> {:ok, decoded}
+      {:error, reason} -> {:error, {:invalid_manifest_json, reason}}
+    end
+  end
+
+  defp decode_json(_other), do: {:error, :invalid_manifest_body}
+
+  defp default_public_fetch(url) do
+    case Req.get(url, receive_timeout: 30_000) do
+      {:ok, %{status: 200, body: body}} -> {:ok, body}
+      {:ok, %{status: status}} -> {:error, {:fetch_failed, status, url}}
+      {:error, reason} -> {:error, {:fetch_failed, reason, url}}
+    end
+  end
+
+  defp maybe_upload_text_objects(true, _bucket, objects) do
+    Enum.each(objects, fn {key, _body} -> Logger.info("[dry-run] would upload #{key}") end)
+    :ok
+  end
+
+  defp maybe_upload_text_objects(false, bucket, objects) do
+    req = storage_req()
+
+    Enum.reduce_while(objects, :ok, fn {key, body}, :ok ->
+      result = Req.put!(req, url: "/#{bucket}/#{key}", body: body)
+
+      if result.status in 200..299 do
+        {:cont, :ok}
+      else
+        {:halt, {:error, {:metadata_upload_failed, key, result.status}}}
+      end
+    end)
+  end
 
   @doc """
   Lists the published channel/version directories directly under an R2 `prefix`
