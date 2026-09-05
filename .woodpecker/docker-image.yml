@@ -94,6 +94,22 @@ steps:
             --template hub.defdo.ninja/defdo/tailwind-builder:${CI_COMMIT_TAG}-ARCH \
             --target hub.defdo.ninja/defdo/tailwind-builder:$TAG
         done
+      # Verify what the registry actually serves. On 2026-08-18 Harbor was
+      # re-populated tag by tag and every existing multi-arch index collapsed
+      # to its amd64 child; arm64 pods then died with "exec format error" and
+      # nothing in CI noticed. A green manifest step must mean both platforms
+      # resolve from the bare tag, not just that the push returned 0.
+      - |
+        for TAG in "${CI_COMMIT_TAG}" latest; do
+          manifest-tool --username "$DOCKER_USERNAME" --password "$DOCKER_PASSWORD" --insecure \
+            inspect hub.defdo.ninja/defdo/tailwind-builder:$TAG > /tmp/manifest.txt
+          if ! grep -qi "arch: amd64" /tmp/manifest.txt || ! grep -qi "arch: arm64" /tmp/manifest.txt; then
+            echo "hub.defdo.ninja/defdo/tailwind-builder:$TAG is NOT a full multi-arch manifest:"
+            cat /tmp/manifest.txt
+            exit 1
+          fi
+          echo "hub.defdo.ninja/defdo/tailwind-builder:$TAG verified: linux/amd64 + linux/arm64"
+        done
     depends_on:
       - build-amd64
       - build-arm64
