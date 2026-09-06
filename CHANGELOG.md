@@ -2,6 +2,15 @@
 
 ## [Unreleased]
 
+## [0.2.35]
+
+### Added
+- `Deployer.publish_release_catalog/1` writes `<prefix>/releases.json`, the
+  channel catalog `defdo_theme_hub` reads (`RuntimeManager.published_versions/1`),
+  built from caller-supplied manifests, with a network-free `dry_run` mode.
+- `MANIFEST_CONSUMER_CONTRACT.md` gains a "Release catalog (channel discovery)"
+  section for consumers that resolve a channel instead of a pinned version.
+
 ## [0.2.34]
 
 ### Fixed
