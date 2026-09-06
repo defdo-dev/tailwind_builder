@@ -2071,6 +2071,159 @@ defmodule Defdo.TailwindBuilder.Deployer do
   end
 
   @doc """
+  Writes `<storage_base_url>/<prefix>/releases.json`, the Tailwind runtime catalog that
+  defdo_theme_hub reads (`RuntimeManager.published_versions/1`). Entries are derived from
+  the manifests given in `:entries`; nothing is fetched here.
+
+  Options:
+    * `:entries` (required) — list of `%{manifest: map, status: "productivo" | "in_progress", url_prefix: String.t()}`
+    * `:prefix` — destination prefix, default `"tailwind_cli_daisyui"`
+    * `:bucket` — default `"defdo"`
+    * `:storage_base_url` — default `"https://storage.defdo.de"`
+    * `:dry_run` — default `false`; when true nothing is uploaded
+
+  Returns `{:ok, %{url: String.t(), versions: non_neg_integer(), body: String.t()}}`
+  or `{:error, term()}`.
+  """
+  @spec publish_release_catalog(keyword()) :: {:ok, map()} | {:error, term()}
+  def publish_release_catalog(opts) do
+    entries = Keyword.fetch!(opts, :entries)
+    prefix = Keyword.get(opts, :prefix, "tailwind_cli_daisyui")
+    bucket = Keyword.get(opts, :bucket, "defdo")
+    base_url = Keyword.get(opts, :storage_base_url, "https://storage.defdo.de")
+    dry_run = Keyword.get(opts, :dry_run, false)
+
+    with {:ok, versions} <- build_catalog_entries(entries, base_url) do
+      body = Jason.encode!(%{"versions" => versions}, pretty: true)
+      key = "#{prefix}/releases.json"
+
+      with :ok <- maybe_upload_text_objects(dry_run, bucket, [{key, body}]) do
+        {:ok, %{url: "#{base_url}/#{key}", versions: length(versions), body: body}}
+      end
+    end
+  end
+
+  defp build_catalog_entries(entries, base_url) do
+    Enum.reduce_while(entries, {:ok, []}, fn entry, acc ->
+      with {:ok, versions} <- acc,
+           {:ok, version} <- build_catalog_entry(entry, base_url) do
+        {:cont, {:ok, [version | versions]}}
+      else
+        {:error, _reason} = error -> {:halt, error}
+      end
+    end)
+    |> then(fn
+      {:ok, versions} -> {:ok, Enum.sort_by(versions, & &1["published_at"], :desc)}
+      error -> error
+    end)
+  end
+
+  defp build_catalog_entry(entry, base_url) do
+    manifest = catalog_get(entry, "manifest", :manifest) || %{}
+    status = catalog_get(entry, "status", :status)
+    url_prefix = catalog_get(entry, "url_prefix", :url_prefix)
+    tailwind_version = catalog_get(manifest, "tailwind_version", :tailwind_version)
+    files = catalog_get(manifest, "files", :files) || []
+
+    with :ok <- validate_catalog_entry(status, url_prefix, tailwind_version, files),
+         {:ok, hash} <- catalog_hash(files) do
+      {:ok,
+       %{
+         "version" => "#{tailwind_version}-daisyui",
+         "tailwind_version" => tailwind_version,
+         "flavor" => "daisyui",
+         "status" => status,
+         "published_at" => catalog_published_at(manifest, files),
+         # "$version"/"$target" are literal placeholders the consumer substitutes
+         # at install time — never interpolate them here.
+         "url" => "#{base_url}/#{url_prefix}/v$version/tailwindcss-$target",
+         "metadata" => %{"daisyui_version" => daisyui_plugin_version(manifest)},
+         "hash" => hash
+       }}
+    end
+  end
+
+  defp validate_catalog_entry(status, url_prefix, tailwind_version, files) do
+    cond do
+      not is_binary(tailwind_version) ->
+        {:error, {:invalid_manifest, :tailwind_version}}
+
+      status not in ~w(productivo in_progress) ->
+        {:error, {:invalid_status, status}}
+
+      not is_binary(url_prefix) ->
+        {:error, {:invalid_entry, :url_prefix}}
+
+      status == "productivo" and files == [] ->
+        {:error, {:no_files, "#{tailwind_version}-daisyui"}}
+
+      true ->
+        :ok
+    end
+  end
+
+  defp catalog_published_at(manifest, files) do
+    file_timestamps =
+      files
+      |> Enum.map(&catalog_get(&1, "built_at", :built_at))
+      |> Enum.filter(&is_binary/1)
+
+    manifest_built_at = catalog_get(manifest, "built_at", :built_at)
+
+    cond do
+      file_timestamps != [] -> Enum.max(file_timestamps)
+      is_binary(manifest_built_at) -> manifest_built_at
+      true -> DateTime.utc_now() |> DateTime.to_iso8601()
+    end
+  end
+
+  defp daisyui_plugin_version(manifest) do
+    manifest
+    |> catalog_get("plugin_set", :plugin_set)
+    |> List.wrap()
+    |> Enum.find_value(fn plugin ->
+      if catalog_get(plugin, "name", :name) == "daisyui" do
+        catalog_get(plugin, "version", :version)
+      end
+    end)
+  end
+
+  defp catalog_hash(files) do
+    Enum.reduce_while(files, {:ok, %{}}, fn file, {:ok, acc} ->
+      target_key = catalog_get(file, "target_key", :target_key)
+      checksum = catalog_get(file, "checksum_sha256", :checksum_sha256)
+
+      cond do
+        not is_binary(target_key) ->
+          {:halt, {:error, {:invalid_manifest, :target_key}}}
+
+        not is_binary(checksum) ->
+          {:halt, {:error, {:invalid_manifest, :checksum_sha256}}}
+
+        true ->
+          {:cont, {:ok, Map.put(acc, theme_hub_target(target_key), %{"sha256" => checksum})}}
+      end
+    end)
+  end
+
+  # Theme Hub names the Windows target `windows-x64.exe`; every other
+  # `target_key` is identical across both systems.
+  defp theme_hub_target("windows-x64"), do: "windows-x64.exe"
+  defp theme_hub_target(target_key), do: target_key
+
+  # Manifests arrive with string keys (decoded JSON from the Hub) or atom keys
+  # (maps built in code); read the string key first, then the atom key.
+  defp catalog_get(map, string_key, atom_key) when is_map(map) do
+    cond do
+      Map.has_key?(map, string_key) -> Map.get(map, string_key)
+      Map.has_key?(map, atom_key) -> Map.get(map, atom_key)
+      true -> nil
+    end
+  end
+
+  defp catalog_get(_other, _string_key, _atom_key), do: nil
+
+  @doc """
   Lists the published channel/version directories directly under an R2 `prefix`
   (via S3 ListObjectsV2 with a `/` delimiter), e.g. `["v4.2.2", "v4.3.2-rc1"]`.
   """

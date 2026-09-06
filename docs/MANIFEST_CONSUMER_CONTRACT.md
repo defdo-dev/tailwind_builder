@@ -67,3 +67,60 @@ https://storage.defdo.de/tailwind_cli_daisyui/v4.2.2-rc1/sha256sums.txt
   `sha256sums.txt` and the sha256 of the bytes served at `storage_url`. This was
   verified end-to-end for `v4.2.2-rc1` (downloaded artifact sha256
   `6c426808102ce8367a42d159f777ff953f209c49498ceadc336ef1b5aac03070`).
+
+## Release catalog (channel discovery)
+
+A consumer that wants *a channel* — the newest production release — rather than
+a pinned version reads the release catalog published by
+`Deployer.publish_release_catalog/1`:
+
+```
+<storage_base_url>/tailwind_cli_daisyui/releases.json
+```
+
+It picks the newest entry with `"status": "productivo"`, takes its
+`tailwind_version`, and then follows the resolution algorithm above unchanged.
+
+Catalog shape (quoted from the `defdo_theme_hub` 0.8.0 configuration reference,
+which consumes it through `RuntimeManager.published_versions/1`):
+
+```json
+{
+  "versions": [
+    {
+      "version": "4.3.3-daisyui",
+      "tailwind_version": "4.3.3",
+      "flavor": "daisyui",
+      "status": "productivo",
+      "published_at": "2026-07-29T01:32:49Z",
+      "url": "https://storage.defdo.de/tailwind_cli_daisyui/v$version/tailwindcss-$target",
+      "metadata": { "daisyui_version": "5.7.4" },
+      "hash": {
+        "linux-x64":   { "sha256": "<64 hex>" },
+        "linux-arm64": { "sha256": "<64 hex>" },
+        "macos-arm64": { "sha256": "<64 hex>" }
+      }
+    },
+    {
+      "version": "4.3.4-rc1-daisyui",
+      "tailwind_version": "4.3.4-rc1",
+      "flavor": "daisyui",
+      "status": "in_progress",
+      "published_at": "2026-09-05T00:00:00Z",
+      "url": "https://storage.defdo.de/tailwind_cli_daisyui_ci_canary/v$version/tailwindcss-$target",
+      "hash": {}
+    }
+  ]
+}
+```
+
+Rules:
+
+- `$version` and `$target` in `url` are placeholders substituted by the
+  consumer at install time: `$version` is the **upstream** Tailwind version
+  (`tailwind_version`), and `$target` is the Theme Hub target name — the
+  canonical `target_key` used by this builder, except Windows, which Theme Hub
+  names `windows-x64.exe`.
+- `hash[target].sha256` is required for every `productivo` target
+  (`hash[target].md5` is optional). An `in_progress` entry is visible but may
+  omit hashes (`"hash": {}`).
