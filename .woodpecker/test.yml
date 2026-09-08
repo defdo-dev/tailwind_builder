@@ -14,7 +14,9 @@
 # that shell out to the build toolchain see the same Rust/Node/Bun versions a
 # real build does — which is the point of pinning them in .tool-versions.
 #
-# The suite needs no secrets: deps are public Hex, and the tests that would
+# The library depends on the private `defdo_s3`, so CI needs the read key for
+# the `defdo` Hex organization (`hex_org_token`, a global Woodpecker secret,
+# same one tailwind_builder_worker uses). Nothing else: the tests that would
 # reach R2 or a remote builder are stubbed.
 
 when:
@@ -30,7 +32,10 @@ steps:
     environment:
       MIX_ENV: test
       CI: "true"
+      HEX_ORG_TOKEN:
+        from_secret: hex_org_token
     commands:
       - mix local.hex --force && mix local.rebar --force
+      - mix hex.organization auth defdo --key "$HEX_ORG_TOKEN"
       - mix deps.get
       - mix precommit
