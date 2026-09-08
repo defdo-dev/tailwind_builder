@@ -30,13 +30,19 @@ when:
 steps:
   - name: test
     image: hub.defdo.ninja/defdo/tailwind-builder:latest
+    environment:
+      HEX_ORG_TOKEN:
+        from_secret: hex_org_token
     commands:
+      - if [ -n "$HEX_ORG_TOKEN" ]; then mix hex.organization auth defdo --key "$HEX_ORG_TOKEN"; fi
       - mix deps.get
       - mix test
 
   - name: release-linux-arm64
     image: hub.defdo.ninja/defdo/tailwind-builder:latest
     environment:
+      HEX_ORG_TOKEN:
+        from_secret: hex_org_token
       R2_ACCESS_KEY_ID:
         from_secret: r2_access_key_id
       R2_SECRET_ACCESS_KEY:
@@ -46,6 +52,7 @@ steps:
       R2_REGION:
         from_secret: r2_region
     commands:
+      - if [ -n "$HEX_ORG_TOKEN" ]; then mix hex.organization auth defdo --key "$HEX_ORG_TOKEN"; fi
       - mix deps.get
       - >-
         mix tailwind.release
