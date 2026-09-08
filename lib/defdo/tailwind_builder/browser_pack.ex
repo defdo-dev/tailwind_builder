@@ -365,22 +365,52 @@ defmodule Defdo.TailwindBuilder.BrowserPack do
   end
 
   @doc """
-  Verify smoke output: the daisyUI banner names the exact bundled version and
-  the candidate `.btn` produced a rule.
+  Verify smoke output against the pack's plugin set: a core utility rule is
+  always required, and each bundled plugin adds its own marker (daisyUI also
+  has to print a banner naming the exact bundled version).
   """
-  @spec verify_smoke_output(String.t(), String.t() | nil) :: :ok | {:error, term()}
-  def verify_smoke_output(css, daisyui_version) do
-    cond do
-      not String.contains?(css, ".btn") ->
-        {:error, {:pack_smoke_missing_rule, ".btn"}}
-
-      is_binary(daisyui_version) and not String.contains?(css, "daisyUI #{daisyui_version}") ->
-        {:error, {:pack_smoke_missing_banner, daisyui_version}}
-
-      true ->
-        :ok
-    end
+  @spec verify_smoke_output(String.t(), [plugin_spec()]) :: :ok | {:error, term()}
+  def verify_smoke_output(css, plugin_set) when is_list(plugin_set) do
+    Enum.reduce_while(smoke_markers(plugin_set), :ok, fn {marker, error}, :ok ->
+      if String.contains?(css, marker), do: {:cont, :ok}, else: {:halt, {:error, error}}
+    end)
   end
+
+  # What the smoke output must contain depends on which plugins the pack was
+  # built with — the harness only asks for the ones it carries. Asserting on
+  # `.btn` unconditionally failed every pack built without daisyUI.
+  defp smoke_markers(plugin_set) do
+    core = [{".underline", {:pack_smoke_missing_rule, ".underline"}}]
+
+    Enum.reduce(plugin_set, core, fn plugin, acc ->
+      acc ++ plugin_markers(plugin_key(plugin), plugin_version(plugin))
+    end)
+  end
+
+  defp plugin_markers("daisyui_v5", version) do
+    banner =
+      if is_binary(version),
+        do: [{"daisyUI #{version}", {:pack_smoke_missing_banner, version}}],
+        else: []
+
+    [{".btn", {:pack_smoke_missing_rule, ".btn"}} | banner]
+  end
+
+  defp plugin_markers("tw_animate_css", _version),
+    do: [{".animate-in", {:pack_smoke_missing_rule, ".animate-in"}}]
+
+  defp plugin_markers("tailwind_animations", _version),
+    do: [{".animate-fade-in", {:pack_smoke_missing_rule, ".animate-fade-in"}}]
+
+  defp plugin_markers(_key, _version), do: []
+
+  defp plugin_key(%{plugin_key: key}), do: key
+  defp plugin_key(%{"plugin_key" => key}), do: key
+  defp plugin_key(_plugin), do: nil
+
+  defp plugin_version(%{version: version}), do: version
+  defp plugin_version(%{"version" => version}), do: version
+  defp plugin_version(_plugin), do: nil
 
   defp sha256_file(path) do
     :crypto.hash(:sha256, File.read!(path)) |> Base.encode16(case: :lower)

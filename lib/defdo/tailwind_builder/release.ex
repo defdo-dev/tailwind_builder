@@ -345,14 +345,8 @@ defmodule Defdo.TailwindBuilder.Release do
   defp maybe_smoke_browser_pack(nil, _plugin_set), do: :ok
 
   defp maybe_smoke_browser_pack(pack, _plugin_set) do
-    daisyui_version =
-      case Enum.find(pack.plugin_set, &(&1.plugin_key == "daisyui_v5")) do
-        %{version: version} -> version
-        _ -> nil
-      end
-
     with {:ok, css} <- BrowserPack.smoke_test(pack.local_path, []),
-         :ok <- BrowserPack.verify_smoke_output(css, daisyui_version) do
+         :ok <- BrowserPack.verify_smoke_output(css, pack.plugin_set) do
       Logger.info(
         "Browser pack smoke passed (#{pack.filename}, #{pack.size_bytes} bytes, sha256 #{String.slice(pack.sha256, 0, 12)}…)"
       )

@@ -81,22 +81,46 @@ defmodule Defdo.TailwindBuilder.BrowserPackTest do
   end
 
   describe "verify_smoke_output/2" do
-    test "passes with .btn rules and the exact daisyUI banner" do
-      assert :ok = BrowserPack.verify_smoke_output("/*! 🌼 daisyUI 5.7.4 */\n.btn{x}", "5.7.4")
+    @daisyui [%{name: "daisyui", version: "5.7.4", plugin_key: "daisyui_v5"}]
+    @animate [%{name: "tw-animate-css", version: "1.4.0", plugin_key: "tw_animate_css"}]
+
+    test "passes with the core rule, .btn rules and the exact daisyUI banner" do
+      css = "/*! 🌼 daisyUI 5.7.4 */\n.underline{x}\n.btn{x}"
+
+      assert :ok = BrowserPack.verify_smoke_output(css, @daisyui)
     end
 
-    test "fails without .btn rules" do
+    test "fails without .btn rules when daisyUI is in the pack" do
       assert {:error, {:pack_smoke_missing_rule, ".btn"}} =
-               BrowserPack.verify_smoke_output("daisyUI 5.7.4", "5.7.4")
+               BrowserPack.verify_smoke_output(".underline{x} daisyUI 5.7.4", @daisyui)
     end
 
     test "fails on a version-mismatched banner" do
       assert {:error, {:pack_smoke_missing_banner, "5.7.4"}} =
-               BrowserPack.verify_smoke_output(".btn{x} daisyUI 5.6.18", "5.7.4")
+               BrowserPack.verify_smoke_output(".underline{x} .btn{x} daisyUI 5.6.18", @daisyui)
     end
 
-    test "nil daisyui version skips the banner assertion" do
-      assert :ok = BrowserPack.verify_smoke_output(".btn{x}", nil)
+    test "a pack without daisyUI is not asked for .btn" do
+      assert :ok = BrowserPack.verify_smoke_output(".underline{x}", [])
+    end
+
+    test "still requires the core rule, whatever the plugin set" do
+      assert {:error, {:pack_smoke_missing_rule, ".underline"}} =
+               BrowserPack.verify_smoke_output(".btn{x}", [])
+    end
+
+    test "each bundled plugin adds its own marker" do
+      assert {:error, {:pack_smoke_missing_rule, ".animate-in"}} =
+               BrowserPack.verify_smoke_output(".underline{x}", @animate)
+
+      assert :ok = BrowserPack.verify_smoke_output(".underline{x} .animate-in{x}", @animate)
+    end
+
+    test "reads plugin entries with string keys too" do
+      string_keyed = [%{"name" => "daisyui", "version" => "5.7.4", "plugin_key" => "daisyui_v5"}]
+      css = ".underline{x} .btn{x} daisyUI 5.7.4"
+
+      assert :ok = BrowserPack.verify_smoke_output(css, string_keyed)
     end
   end
 end
