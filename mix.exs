@@ -11,6 +11,7 @@ defmodule Defdo.TailwindBuilder.MixProject do
       version: @version,
       elixir: "~> 1.14",
       start_permanent: Mix.env() == :prod,
+      elixirc_paths: elixirc_paths(Mix.env()),
       description: description(),
       package: package(),
       source_url: @source_url,
@@ -19,6 +20,16 @@ defmodule Defdo.TailwindBuilder.MixProject do
       aliases: aliases()
     ]
   end
+
+  # `mix precommit` ends in `mix test`, so the whole alias must run in :test.
+  def cli do
+    [preferred_envs: [precommit: :test]]
+  end
+
+  # test/support holds helper MODULES (.ex), not test files: compile them as
+  # sources so `mix test` stops reporting them as unmatched test files.
+  defp elixirc_paths(:test), do: ["lib", "test/support"]
+  defp elixirc_paths(_), do: ["lib"]
 
   # Run "mix help compile.app" to learn about applications.
   def application do
@@ -71,7 +82,15 @@ defmodule Defdo.TailwindBuilder.MixProject do
       # Point git at the tracked hooks dir so the pre-commit (format + credo) runs.
       "hooks.install": ["cmd git config core.hooksPath .githooks"],
       # Full-tree gate for CI or a manual pre-push check.
-      check: ["format --check-formatted", "credo --strict"]
+      check: ["format --check-formatted", "credo --strict"],
+      # The gate CI runs, same name as in tailwind_builder_hub and
+      # tailwind_builder_worker so one command works across the ecosystem.
+      precommit: [
+        "compile --warnings-as-errors",
+        "deps.unlock --check-unused",
+        "format --check-formatted",
+        "test"
+      ]
     ]
   end
 end

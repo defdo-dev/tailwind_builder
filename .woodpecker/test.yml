@@ -1,0 +1,41 @@
+---
+# Core test workflow.
+#
+# Until now this repository had NO push or pull-request pipeline that verified a
+# change on its own: `.woodpecker/` held only the release flows (canary-linux,
+# release-linux-arm64, release-macos-arm64 — all scoped to release branches) plus
+# docker-image.yml and hex-publish.yml on `event: tag`. A branch such as
+# `chore/*` therefore reached main with zero automated checks, and the first run
+# of the suite happened during a release that already carried the change.
+#
+# This runs `mix precommit` (compile --warnings-as-errors, deps.unlock
+# --check-unused, format check, full ExUnit suite) on every push and pull
+# request. It uses the toolchain image the release pipelines use, so the tests
+# that shell out to the build toolchain see the same Rust/Node/Bun versions a
+# real build does — which is the point of pinning them in .tool-versions.
+#
+# The library depends on the private `defdo_s3`, so CI needs the read key for
+# the `defdo` Hex organization (`hex_org_token`, a global Woodpecker secret,
+# same one tailwind_builder_worker uses). Nothing else: the tests that would
+# reach R2 or a remote builder are stubbed.
+
+when:
+  - event: [push, pull_request, manual]
+
+# The darwin agent is a local-backend exec runner and cannot run container steps.
+labels:
+  platform: linux/amd64
+
+steps:
+  test:
+    image: hub.defdo.ninja/defdo/tailwind-builder:latest
+    environment:
+      MIX_ENV: test
+      CI: "true"
+      HEX_ORG_TOKEN:
+        from_secret: hex_org_token
+    commands:
+      - mix local.hex --force && mix local.rebar --force
+      - mix hex.organization auth defdo --key "$HEX_ORG_TOKEN"
+      - mix deps.get
+      - mix precommit
