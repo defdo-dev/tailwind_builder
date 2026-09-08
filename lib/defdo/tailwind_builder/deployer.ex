@@ -13,7 +13,7 @@ defmodule Defdo.TailwindBuilder.Deployer do
   """
 
   require Logger
-  alias Defdo.TailwindBuilder.{Core, PluginProbes, Telemetry}
+  alias Defdo.TailwindBuilder.{BrowserPack, Core, PluginProbes, Telemetry}
   alias Defdo.TailwindBuilder.Core.Targets
 
   @doc """
@@ -1086,10 +1086,7 @@ defmodule Defdo.TailwindBuilder.Deployer do
   # failure and which aborts metadata publication.
   defp maybe_smoke_verify(result, body, opts) do
     if Keyword.get(opts, :verify_smoke_test, false) do
-      tester =
-        Keyword.get(opts, :verification_smoke_tester, &default_downloaded_smoke_tester(&1, opts))
-
-      case run_downloaded_smoke(body, tester) do
+      case smoke_downloaded_artifact(result.artifact_name, body, opts) do
         {:ok, _info} ->
           Map.put(result, :smoke_test, :passed)
 
@@ -1098,6 +1095,55 @@ defmodule Defdo.TailwindBuilder.Deployer do
       end
     else
       result
+    end
+  end
+
+  # Not every uploaded artifact is a CLI binary. The browser pack is an ES
+  # module: the generic path below writes the body to a file named `tailwindcss`,
+  # chmods it 0755 and executes it, which for the pack fails with
+  # `{:command_failed, 8, ""}` — an artifact that uploaded and hashed correctly
+  # reported as a smoke failure. Dispatch on the artifact instead.
+  defp smoke_downloaded_artifact(artifact_name, body, opts) do
+    if browser_pack_artifact?(artifact_name) do
+      smoke_downloaded_browser_pack(body, opts)
+    else
+      tester =
+        Keyword.get(opts, :verification_smoke_tester, &default_downloaded_smoke_tester(&1, opts))
+
+      run_downloaded_smoke(body, tester)
+    end
+  end
+
+  defp browser_pack_artifact?(name) when is_binary(name), do: String.ends_with?(name, ".mjs")
+  defp browser_pack_artifact?(_name), do: false
+
+  defp smoke_downloaded_browser_pack(body, opts) do
+    dir =
+      Path.join(
+        System.tmp_dir!(),
+        "tailwind_builder_verify_pack_#{System.unique_integer([:positive])}"
+      )
+
+    File.mkdir_p!(dir)
+    path = Path.join(dir, "tailwind-browser-pack.mjs")
+    File.write!(path, body)
+
+    try do
+      with {:ok, css} <- BrowserPack.smoke_test(path, []),
+           :ok <- BrowserPack.verify_smoke_output(css, browser_pack_plugin_set(opts)) do
+        {:ok, :browser_pack_smoke_passed}
+      end
+    after
+      File.rm_rf(dir)
+    end
+  end
+
+  # The pack the release built carries the plugin set it was built with, which
+  # is what the downloaded copy must be asserted against.
+  defp browser_pack_plugin_set(opts) do
+    case Keyword.get(opts, :browser_pack) do
+      %{plugin_set: plugin_set} when is_list(plugin_set) -> plugin_set
+      _other -> []
     end
   end
 
