@@ -42,7 +42,7 @@ defmodule Defdo.TailwindBuilder.Remote.ReleaseTest do
     Path.join(dir, "test_report_#{System.unique_integer([:positive])}.json")
   end
 
-  defp base_opts(extra \\ []) do
+  defp base_opts(extra) do
     Keyword.merge(
       [
         host: "builder.example.com",

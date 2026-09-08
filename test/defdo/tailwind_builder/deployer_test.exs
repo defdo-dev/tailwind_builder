@@ -53,7 +53,7 @@ defmodule Defdo.TailwindBuilder.DeployerTest do
     test "explicit target_key selects only the requested cross-compiled artifact" do
       tmp = temp_dir("deploy_musl")
 
-      dist =
+      _dist =
         write_dist(tmp, "4.3.3", [
           "tailwindcss-linux-x64",
           "tailwindcss-linux-x64-musl",

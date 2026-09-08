@@ -1,0 +1,36 @@
+---
+# Core test workflow.
+#
+# Until now this repository had NO push or pull-request pipeline that verified a
+# change on its own: `.woodpecker/` held only the release flows (canary-linux,
+# release-linux-arm64, release-macos-arm64 — all scoped to release branches) plus
+# docker-image.yml and hex-publish.yml on `event: tag`. A branch such as
+# `chore/*` therefore reached main with zero automated checks, and the first run
+# of the suite happened during a release that already carried the change.
+#
+# This runs `mix precommit` (compile --warnings-as-errors, deps.unlock
+# --check-unused, format check, full ExUnit suite) on every push and pull
+# request. It uses the toolchain image the release pipelines use, so the tests
+# that shell out to the build toolchain see the same Rust/Node/Bun versions a
+# real build does — which is the point of pinning them in .tool-versions.
+#
+# The suite needs no secrets: deps are public Hex, and the tests that would
+# reach R2 or a remote builder are stubbed.
+
+when:
+  - event: [push, pull_request, manual]
+
+# The darwin agent is a local-backend exec runner and cannot run container steps.
+labels:
+  platform: linux/amd64
+
+steps:
+  test:
+    image: hub.defdo.ninja/defdo/tailwind-builder:latest
+    environment:
+      MIX_ENV: test
+      CI: "true"
+    commands:
+      - mix local.hex --force && mix local.rebar --force
+      - mix deps.get
+      - mix precommit
