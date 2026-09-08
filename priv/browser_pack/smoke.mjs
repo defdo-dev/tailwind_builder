@@ -20,16 +20,32 @@ if (pack.contract !== 1) {
   process.exit(2)
 }
 
-const themeSource =
-  '@import "tailwindcss"; @import "tw-animate-css"; @import "tailwind-animations"; @plugin "daisyui";'
-const candidates = [
-  "btn",
-  "btn-primary",
-  "animate-fade-in",
-  "animate-in",
-  "fade-in",
-  "slide-in-from-top",
-]
+// The pack bundles only the plugins it was built with, so the harness must ask
+// for exactly those. Importing a stylesheet the pack does not carry is the
+// error case this same harness asserts on below — a fixed theme source turned
+// every partial build (e.g. a daisyui-only release) into a false failure.
+const pluginKeys = new Set((pack.pluginSet ?? []).map((plugin) => plugin.plugin_key))
+
+const imports = ['@import "tailwindcss";']
+// A core utility, so there is always something to assert on even with no plugins.
+const candidates = ["underline"]
+
+if (pluginKeys.has("tw_animate_css")) {
+  imports.push('@import "tw-animate-css";')
+  candidates.push("animate-in", "fade-in", "slide-in-from-top")
+}
+
+if (pluginKeys.has("tailwind_animations")) {
+  imports.push('@import "tailwind-animations";')
+  candidates.push("animate-fade-in")
+}
+
+if (pluginKeys.has("daisyui_v5")) {
+  imports.push('@plugin "daisyui";')
+  candidates.push("btn", "btn-primary")
+}
+
+const themeSource = imports.join(" ")
 
 const compiler = await pack.createCompiler(themeSource)
 const css = compiler.build(candidates)
