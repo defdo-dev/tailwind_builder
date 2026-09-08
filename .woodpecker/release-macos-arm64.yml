@@ -28,6 +28,13 @@ when:
       - canary/*
   - event: manual
 
+# The darwin agent runs on a developer machine, so its Hex archive is whatever
+# that machine last installed. It was compiled against an older Elixir and now
+# crashes on Elixir 1.19.5 with `(UndefinedFunctionError) function Enum.__in__/2
+# is undefined`, from Hex.HTTP.SSL.ssl_opts/1 — which breaks every Hex request,
+# not just the org auth. `mix local.hex --force` reinstalls it for the running
+# Elixir; the container pipelines get this for free from their image.
+
 steps:
   - name: test
     image: bash
@@ -35,6 +42,7 @@ steps:
       HEX_ORG_TOKEN:
         from_secret: hex_org_token
     commands:
+      - mix local.hex --force
       - if [ -n "$HEX_ORG_TOKEN" ]; then mix hex.organization auth defdo --key "$HEX_ORG_TOKEN"; fi
       - mix deps.get
       - mix test
@@ -53,6 +61,7 @@ steps:
       R2_REGION:
         from_secret: r2_region
     commands:
+      - mix local.hex --force
       - if [ -n "$HEX_ORG_TOKEN" ]; then mix hex.organization auth defdo --key "$HEX_ORG_TOKEN"; fi
       - mix deps.get
       - >-
