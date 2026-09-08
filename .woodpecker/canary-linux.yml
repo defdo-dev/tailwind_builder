@@ -24,6 +24,14 @@
 # never overwrite each other's fragment, so the composed manifest converges to
 # the full target set and any later run deterministically rebuilds it.
 #
+# Hex authentication:
+#   `mix deps.get` needs the read key for the private `defdo` Hex organization —
+#   `defdo_s3` became a dependency in 0.2.20 (118aceb, 2026-07-17) and only
+#   hex-publish.yml was updated for it, so every run of this pipeline since then
+#   has died at `mix deps.get` with "Unknown package defdo_s3 in lockfile". The
+#   toolchain image is NOT pre-authenticated. The auth line is guarded on the
+#   secret being present so a runner without it still reaches a useful error.
+#
 # Limitations:
 #   This pipeline only proves linux-x64 (the agent's native target).
 #   macOS and Windows targets require native hosts outside this pipeline.
@@ -40,13 +48,19 @@ when:
 steps:
   - name: test
     image: hub.defdo.ninja/defdo/tailwind-builder:latest
+    environment:
+      HEX_ORG_TOKEN:
+        from_secret: hex_org_token
     commands:
+      - if [ -n "$HEX_ORG_TOKEN" ]; then mix hex.organization auth defdo --key "$HEX_ORG_TOKEN"; fi
       - mix deps.get
       - mix test
 
   - name: release-canary-linux
     image: hub.defdo.ninja/defdo/tailwind-builder:latest
     environment:
+      HEX_ORG_TOKEN:
+        from_secret: hex_org_token
       R2_ACCESS_KEY_ID:
         from_secret: r2_access_key_id
       R2_SECRET_ACCESS_KEY:
@@ -56,6 +70,7 @@ steps:
       R2_REGION:
         from_secret: r2_region
     commands:
+      - if [ -n "$HEX_ORG_TOKEN" ]; then mix hex.organization auth defdo --key "$HEX_ORG_TOKEN"; fi
       - mix deps.get
       - >-
         mix tailwind.release

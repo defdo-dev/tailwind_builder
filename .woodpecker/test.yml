@@ -18,6 +18,9 @@
 # the `defdo` Hex organization (`hex_org_token`, a global Woodpecker secret,
 # same one tailwind_builder_worker uses). Nothing else: the tests that would
 # reach R2 or a remote builder are stubbed.
+#
+# The release pipelines need the same key and were missing it — a canary run
+# proved it, see the header of canary-linux.yml.
 
 when:
   - event: [push, pull_request, manual]
