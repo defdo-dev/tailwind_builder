@@ -924,6 +924,51 @@ defmodule Defdo.TailwindBuilder.DeployerTest do
       assert res.status == :smoke_failed
       assert res.smoke_test == :failed
     end
+
+    test "the browser pack is not smoke tested as a CLI binary" do
+      dir = temp_dir("deployer_verify_pack")
+      on_exit(fn -> File.rm_rf(dir) end)
+
+      pack = write_file(dir, "tailwind-browser-pack.mjs", "export default { contract: 1 }\n")
+
+      deployed = [
+        {:ok,
+         %{
+           local_path: pack,
+           remote_key: "tailwind_cli_daisyui/v4.2.2-rc1/tailwind-browser-pack.mjs",
+           bucket: "defdo",
+           size: File.stat!(pack).size
+         }}
+      ]
+
+      test_pid = self()
+
+      # The generic path writes the body to a file named `tailwindcss`, chmods it
+      # 0755 and executes it — for an ES module that exits 8 with no output, and
+      # an artifact that uploaded and hashed correctly is reported as a smoke
+      # failure. This tester must never be reached for a .mjs artifact.
+      binary_tester = fn _path ->
+        send(test_pid, :binary_tester_called)
+        {:ok, %{ok: true}}
+      end
+
+      result =
+        Deployer.verify_uploaded_artifacts(deployed,
+          storage_base_url: "https://storage.defdo.de",
+          verification_fetcher: fn _url -> {:ok, File.read!(pack)} end,
+          verify_smoke_test: true,
+          verification_smoke_tester: binary_tester
+        )
+
+      refute_received :binary_tester_called
+
+      # The stub above is not a real pack, so the module smoke path rejects it —
+      # what matters is that it was the path taken.
+      assert {:error, {:verification_failed, report}} = result
+      [res] = report.results
+      assert res.status == :smoke_failed
+      refute match?({:command_failed, 8, _}, res.error)
+    end
   end
 
   describe "merge_published_manifest/2" do
