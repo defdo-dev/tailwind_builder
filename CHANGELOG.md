@@ -2,6 +2,31 @@
 
 ## [Unreleased]
 
+## [0.2.36]
+
+### Fixed
+- Post-upload verification smoke-tests `tailwind-browser-pack.mjs` as an ES
+  module instead of executing it as a CLI binary. Every release that uploaded a
+  browser pack aborted at `verify` with `{:command_failed, 8, ""}` on an
+  artifact whose checksum had just matched.
+- The browser-pack smoke harness follows the pack's own `pluginSet` instead of a
+  fixed theme source, so a pack built with a subset of the plugins (the canary
+  release builds daisyUI only) can pass. `verify_smoke_output/2` takes the plugin
+  set for the same reason: it no longer requires `.btn` from a pack that carries
+  no daisyUI.
+
+### Changed
+- `.woodpecker/test.yml` runs `mix precommit` on every push and pull request;
+  the repository previously had no pipeline that verified a change before merge.
+- The release pipelines authenticate the private `defdo` Hex organization, which
+  none of them did after `defdo_s3` became a dependency in 0.2.20 — all three
+  had been failing at `mix deps.get` since.
+- The darwin release pipeline reinstalls Hex before use; the agent machine's
+  archive predates Elixir 1.19 and crashed on every Hex request.
+- `.tool-versions` pins `nodejs 22.20.0`, matching the build image, instead of
+  the moving `lts`.
+- `mint` 1.10.0, clearing two DoS advisories reachable through `req -> finch`.
+
 ## [0.2.35]
 
 ### Added
