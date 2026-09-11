@@ -13,14 +13,20 @@
 FROM elixir:1.19-slim
 
 # Versions track what recent Tailwind releases require, and match .tool-versions
-# so a local or darwin-agent build links against the same toolchain the
-# container does. Tailwind 4.3.x bumped its whole toolchain vs 4.2.x: node
-# >=22.13 (pnpm 11 needs it; we run 24.19.0), pnpm 11.9.0
+# so a local build links against the same toolchain the container does.
+#
+# node 24.21.0 is the newest patch of the Active LTS line (24.x, LTS since
+# 2025-10). 26.x is Current and does not reach LTS until ~2026-10, and node
+# removed corepack from its distributions in 25 — this image gets pnpm from
+# corepack, so moving past 24 breaks that mechanism and is its own change.
+#
+# Tailwind 4.3.x bumped its whole toolchain vs 4.2.x: node >=22.13 (pnpm 11
+# needs it), pnpm 11.9.0
 # (packageManager field; applies the lightningcss pnpm-patch that lets the bun
 # standalone embed lightningcss's native .node), rust 1.95.0 (rust-toolchain.toml),
 # bun 1.3.14. pnpm is provided via corepack so each Tailwind version's pinned
 # packageManager is used automatically (9.6.0 for 4.2.2, 11.9.0 for 4.3.2).
-ARG NODE_VERSION=24.19.0
+ARG NODE_VERSION=24.21.0
 ARG RUST_VERSION=1.95.0
 ARG BUN_VERSION=1.3.14
 ARG PNPM_VERSION=11.9.0
