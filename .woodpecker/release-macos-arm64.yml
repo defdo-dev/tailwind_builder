@@ -44,6 +44,14 @@ when:
 # An explicit `corepack prepare` does download, so that is what runs here.
 # Bump this alongside --version when the released Tailwind changes.
 #
+# corepack itself is updated first. The one bundled with the agent's node
+# (22.20.0) predates pnpm 12 and resolves the shim to `bin/pnpm.cjs`, while
+# pnpm 12.3.4 ships ESM and installs `bin/pnpm.mjs`:
+#   Error: Cannot find module '.../v1/pnpm/12.3.4/bin/pnpm.cjs'
+# The download had already succeeded — only the shim was looking for a file
+# name that stopped existing. `npm install -g corepack@latest` is the fix
+# corepack itself documents for this.
+#
 # The darwin agent runs on a developer machine, so its Hex archive is whatever
 # that machine last installed. It was compiled against an older Elixir and now
 # crashes on Elixir 1.19.5 with `(UndefinedFunctionError) function Enum.__in__/2
@@ -60,6 +68,7 @@ steps:
       COREPACK_ENABLE_DOWNLOAD_PROMPT: "0"
       COREPACK_HOME: /tmp/defdo-corepack
     commands:
+      - npm install -g corepack@latest
       - corepack enable
       - corepack prepare pnpm@12.3.4 --activate
       - mix local.hex --force
@@ -83,6 +92,7 @@ steps:
       COREPACK_ENABLE_DOWNLOAD_PROMPT: "0"
       COREPACK_HOME: /tmp/defdo-corepack
     commands:
+      - npm install -g corepack@latest
       - corepack enable
       - corepack prepare pnpm@12.3.4 --activate
       - mix local.hex --force
