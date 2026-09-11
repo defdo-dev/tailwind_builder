@@ -35,22 +35,24 @@ when:
 # and not corepack's package cache. A pnpm prepared by hand on the machine is
 # invisible; the run died with
 #   Cannot find module '.../home/.cache/node/corepack/v1/pnpm/12.3.4/bin/pnpm.cjs'
-# So the pipeline provisions pnpm itself and points COREPACK_HOME at a stable
-# path so the download survives between runs. It prepares the EXACT version the
-# Tailwind source pins (4.3.3 -> pnpm 12.3.4, matching the hardcoded --version
-# below), because corepack's lazy path — download on first shim invocation —
-# does not fire on this agent: it resolves the version, then fails with
-# `Cannot find module .../v1/pnpm/12.3.4/bin/pnpm.cjs` without fetching it.
-# An explicit `corepack prepare` does download, so that is what runs here.
-# Bump this alongside --version when the released Tailwind changes.
-#
-# corepack itself is updated first. The one bundled with the agent's node
-# (22.20.0) predates pnpm 12 and resolves the shim to `bin/pnpm.cjs`, while
-# pnpm 12.3.4 ships ESM and installs `bin/pnpm.mjs`:
+# So the pipeline provisions pnpm itself — and not through corepack, which was
+# three failed attempts:
+#   1. a stable COREPACK_HOME: same error at the new path;
+#   2. an explicit `corepack prepare`: downloads fine, shim still fails;
+#   3. `npm install -g corepack@latest`: installs, shim still resolves .cjs.
+# The download was never the problem. pnpm 12 ships ESM (`bin/pnpm.mjs`) and
+# the corepack the agent's node can run resolves `bin/pnpm.cjs`:
 #   Error: Cannot find module '.../v1/pnpm/12.3.4/bin/pnpm.cjs'
-# The download had already succeeded — only the shim was looking for a file
-# name that stopped existing. `npm install -g corepack@latest` is the fix
-# corepack itself documents for this.
+# corepack 0.36.0 refuses that node anyway (`EBADENGINE ... required: ^22.22.2
+# || ^24.15.0 || >=26.0.0, current: v22.20.0`).
+#
+# @pnpm/exe is a self-contained pnpm binary with its own bundled node, so it
+# needs neither corepack nor a newer node on the agent. Its version tracks the
+# `packageManager` field of the Tailwind release this pipeline builds (4.3.3 ->
+# 12.3.4); bump it alongside --version below.
+#
+# The version probe is deliberate: three runs were spent guessing what this
+# agent resolves, because nothing in the log said.
 #
 # The darwin agent runs on a developer machine, so its Hex archive is whatever
 # that machine last installed. It was compiled against an older Elixir and now
@@ -65,12 +67,10 @@ steps:
     environment:
       HEX_ORG_TOKEN:
         from_secret: hex_org_token
-      COREPACK_ENABLE_DOWNLOAD_PROMPT: "0"
-      COREPACK_HOME: /tmp/defdo-corepack
     commands:
-      - npm install -g corepack@latest
-      - corepack enable
-      - corepack prepare pnpm@12.3.4 --activate
+      - node --version && which -a node pnpm || true
+      - npm install -g @pnpm/exe@12.3.4
+      - pnpm --version
       - mix local.hex --force
       - if [ -n "$HEX_ORG_TOKEN" ]; then mix hex.organization auth defdo --key "$HEX_ORG_TOKEN"; fi
       - mix deps.get
@@ -89,12 +89,10 @@ steps:
         from_secret: r2_host
       R2_REGION:
         from_secret: r2_region
-      COREPACK_ENABLE_DOWNLOAD_PROMPT: "0"
-      COREPACK_HOME: /tmp/defdo-corepack
     commands:
-      - npm install -g corepack@latest
-      - corepack enable
-      - corepack prepare pnpm@12.3.4 --activate
+      - node --version && which -a node pnpm || true
+      - npm install -g @pnpm/exe@12.3.4
+      - pnpm --version
       - mix local.hex --force
       - if [ -n "$HEX_ORG_TOKEN" ]; then mix hex.organization auth defdo --key "$HEX_ORG_TOKEN"; fi
       - mix deps.get
