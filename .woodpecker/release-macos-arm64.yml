@@ -51,6 +51,14 @@ when:
 # `packageManager` field of the Tailwind release this pipeline builds (4.3.3 ->
 # 12.3.4); bump it alongside --version below.
 #
+# It installs under a prefix in /tmp and is prepended to PATH rather than
+# installed globally. The agent already has a `pnpm` on PATH — the broken
+# corepack shim, which is why the dependency check reported it missing while
+# `which -a pnpm` found it — and a global install collides with it:
+#   npm error EEXIST: /Users/<agent>/.local/node/bin/pnpm
+# Overwriting that with --force would repair the agent by mutating a machine
+# this repository does not own. A prefix leaves it alone.
+#
 # The version probe is deliberate: three runs were spent guessing what this
 # agent resolves, because nothing in the log said.
 #
@@ -69,7 +77,8 @@ steps:
         from_secret: hex_org_token
     commands:
       - node --version && which -a node pnpm || true
-      - npm install -g @pnpm/exe@12.3.4
+      - npm install -g @pnpm/exe@12.3.4 --prefix /tmp/defdo-pnpm
+      - export PATH="/tmp/defdo-pnpm/bin:$PATH"
       - pnpm --version
       - mix local.hex --force
       - if [ -n "$HEX_ORG_TOKEN" ]; then mix hex.organization auth defdo --key "$HEX_ORG_TOKEN"; fi
@@ -91,7 +100,8 @@ steps:
         from_secret: r2_region
     commands:
       - node --version && which -a node pnpm || true
-      - npm install -g @pnpm/exe@12.3.4
+      - npm install -g @pnpm/exe@12.3.4 --prefix /tmp/defdo-pnpm
+      - export PATH="/tmp/defdo-pnpm/bin:$PATH"
       - pnpm --version
       - mix local.hex --force
       - if [ -n "$HEX_ORG_TOKEN" ]; then mix hex.organization auth defdo --key "$HEX_ORG_TOKEN"; fi
