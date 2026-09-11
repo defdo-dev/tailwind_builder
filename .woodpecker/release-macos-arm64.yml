@@ -28,6 +28,16 @@ when:
       - canary/*
   - event: manual
 
+# The darwin agent also runs each step with an EPHEMERAL HOME
+# (.../woodpecker-local-<id>/home), so nothing installed into the developer's
+# home is visible here: not asdf's installs (which is why .tool-versions does
+# not reach this agent and node resolves to whatever the runner's PATH has),
+# and not corepack's package cache. A pnpm prepared by hand on the machine is
+# invisible; the run died with
+#   Cannot find module '.../home/.cache/node/corepack/v1/pnpm/12.3.4/bin/pnpm.cjs'
+# So the pipeline provisions pnpm itself, the same way the image does, and
+# points COREPACK_HOME at a stable path so the download survives between runs.
+#
 # The darwin agent runs on a developer machine, so its Hex archive is whatever
 # that machine last installed. It was compiled against an older Elixir and now
 # crashes on Elixir 1.19.5 with `(UndefinedFunctionError) function Enum.__in__/2
@@ -41,7 +51,10 @@ steps:
     environment:
       HEX_ORG_TOKEN:
         from_secret: hex_org_token
+      COREPACK_ENABLE_DOWNLOAD_PROMPT: "0"
+      COREPACK_HOME: /tmp/defdo-corepack
     commands:
+      - corepack enable
       - mix local.hex --force
       - if [ -n "$HEX_ORG_TOKEN" ]; then mix hex.organization auth defdo --key "$HEX_ORG_TOKEN"; fi
       - mix deps.get
@@ -60,7 +73,10 @@ steps:
         from_secret: r2_host
       R2_REGION:
         from_secret: r2_region
+      COREPACK_ENABLE_DOWNLOAD_PROMPT: "0"
+      COREPACK_HOME: /tmp/defdo-corepack
     commands:
+      - corepack enable
       - mix local.hex --force
       - if [ -n "$HEX_ORG_TOKEN" ]; then mix hex.organization auth defdo --key "$HEX_ORG_TOKEN"; fi
       - mix deps.get
