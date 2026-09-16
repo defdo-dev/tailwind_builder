@@ -64,13 +64,13 @@ defmodule Defdo.TailwindBuilder.MixProject do
   # Run "mix help deps" to learn about dependencies.
   defp deps do
     [
-      {:castore, ">= 0.0.0"},
+      {:castore, "~> 1.0"},
       {:mock, "~> 0.3", only: :test},
       {:req, "~> 0.7"},
       {:defdo_s3, "~> 0.2", organization: @organization},
       {:jason, "~> 1.4"},
       {:credo, "~> 1.7", only: [:dev, :test], runtime: false},
-      {:ex_doc, "~> 0.34", only: :dev, runtime: false}
+      {:ex_doc, "~> 0.40", only: :dev, runtime: false}
     ]
   end
 
