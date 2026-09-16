@@ -825,11 +825,8 @@ defmodule Defdo.TailwindBuilder.Deployer do
     fragment = {fragment_filename(self_target), Jason.encode!(manifest, pretty: true)}
 
     siblings =
-      opts
-      |> Keyword.get(:compose_targets, [])
-      |> List.wrap()
-      |> Enum.map(&to_string/1)
-      |> Enum.reject(&(&1 == self_target))
+      version
+      |> compose_sibling_keys(self_target, opts)
       |> Enum.flat_map(fn target ->
         case fetch_fragment(version, target, opts) do
           {:ok, sibling} ->
@@ -848,6 +845,77 @@ defmodule Defdo.TailwindBuilder.Deployer do
     composed = compose_manifest(manifest, siblings)
     composed_sums = sha256sums_from_manifest(composed) || sums
     {:ok, {composed, composed_sums, [fragment]}}
+  end
+
+  defp compose_sibling_keys(version, self_target, opts) do
+    named = Keyword.get(opts, :compose_targets, [])
+
+    compose_sibling_targets(named, published_manifest(version, opts), self_target)
+  end
+
+  @doc """
+  Sibling targets to fold into the channel manifest.
+
+  Callers name the targets they know about — the Hub sends a recipe's REQUIRED
+  set — but the channel may already publish optional targets nobody named. The
+  published manifest's own targets are therefore folded in as well, which keeps
+  compose monotonic: building one optional target can no longer drop its optional
+  siblings from the channel manifest. Pure — no network.
+  """
+  @spec compose_sibling_targets([String.t() | atom()], map() | nil, String.t() | nil) :: [
+          String.t()
+        ]
+  def compose_sibling_targets(named, published_manifest, self_target) do
+    published =
+      published_manifest
+      |> List.wrap()
+      |> Enum.flat_map(&manifest_files/1)
+      |> Enum.flat_map(fn file ->
+        case fetch_any(file, :target_key) do
+          nil -> []
+          key -> [to_string(key)]
+        end
+      end)
+
+    named
+    |> List.wrap()
+    |> Enum.map(&to_string/1)
+    |> Kernel.++(published)
+    |> Enum.uniq()
+    |> Enum.reject(&(&1 == self_target))
+  end
+
+  defp published_manifest(version, opts) do
+    case fetch_remote_manifest(version, opts) do
+      {:ok, remote} ->
+        remote
+
+      :none ->
+        nil
+
+      {:error, reason} ->
+        Logger.warning(
+          "Compose could not read the published manifest (#{inspect(reason)}); " <>
+            "folding only the named sibling targets"
+        )
+
+        nil
+    end
+  end
+
+  # `plugin_verification` summarises the whole manifest, so it has to be recomputed
+  # from the composed file set. Keeping this run's verdict lets a target that cannot
+  # be smoke-tested on the building host (a cross-compiled musl binary, whose checks
+  # are empty and therefore `unknown`) overwrite the verified verdict its siblings
+  # published, which blocks promotion for artifacts that were in fact verified.
+  defp put_plugin_verification(manifest) do
+    summary = summarize_plugin_verification(manifest_files(manifest))
+
+    if Map.has_key?(manifest, "plugin_verification") do
+      Map.put(manifest, "plugin_verification", summary)
+    else
+      Map.put(manifest, :plugin_verification, summary)
+    end
   end
 
   @doc """
@@ -972,6 +1040,7 @@ defmodule Defdo.TailwindBuilder.Deployer do
     |> Map.put(:total_files, length(merged_files))
     |> Map.put(:plugin_set, merged_plugins)
     |> put_metadata_plugin_set(merged_plugins)
+    |> put_plugin_verification()
   end
 
   defp merge_plugin_sets(remote, local) do
@@ -1562,8 +1631,8 @@ defmodule Defdo.TailwindBuilder.Deployer do
   # generated its marker, unverified when a plugin has no probe, failed if any
   # probe missed (fail-closed should prevent publish, but record it defensively).
   defp summarize_plugin_verification(files) do
-    checks = Enum.flat_map(files, fn f -> Map.get(f, :plugin_checks) || [] end)
-    statuses = checks |> Enum.map(& &1.status) |> Enum.uniq()
+    checks = Enum.flat_map(files, fn f -> fetch_any(f, :plugin_checks) || [] end)
+    statuses = checks |> Enum.map(&check_status/1) |> Enum.uniq()
 
     status =
       cond do
@@ -1574,6 +1643,18 @@ defmodule Defdo.TailwindBuilder.Deployer do
       end
 
     %{status: status, checks: checks}
+  end
+
+  # Checks are atom-keyed when this run produced them and string-keyed when they
+  # came back from a fetched manifest/fragment, so read both shapes.
+  defp check_status(check) do
+    case fetch_any(check, :status) do
+      status when is_atom(status) -> status
+      "verified" -> :verified
+      "failed" -> :failed
+      "unverified" -> :unverified
+      _ -> :unknown
+    end
   end
 
   defp maybe_upload_release_metadata(_destination, _version, nil, nil, [], _opts), do: {:ok, []}
