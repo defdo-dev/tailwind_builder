@@ -26,6 +26,12 @@
 - `Deployer.compose_sibling_targets/3`, the pure sibling-selection step, so the
   union is testable without a network round trip.
 
+### Dependencies
+- `castore` requires `~> 1.0` instead of `>= 0.0.0`, which accepted every
+  version ever published.
+- `ex_doc` requires `~> 0.40`, the line already resolved in the lock; the
+  declared floor had sat at `~> 0.34`.
+
 ## [0.2.36]
 
 ### Fixed
