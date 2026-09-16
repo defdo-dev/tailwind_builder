@@ -2,6 +2,30 @@
 
 ## [Unreleased]
 
+## [0.2.37]
+
+### Fixed
+- Composing a channel manifest no longer drops targets the caller did not name.
+  Siblings are now the union of `compose_targets` and the targets the published
+  manifest already lists, so building one optional target stops evicting the
+  others. The Hub sends a recipe's *required* set, so every optional artifact
+  (`linux-x64-musl`, `linux-arm64-musl`) disappeared from `manifest.json`
+  whenever another optional target was built, and its dashboard row fell from
+  `published` back to `buildable_now` even though the artifact and its
+  `manifest.d/<target>.json` fragment were intact in storage.
+- `plugin_verification` is recomputed from the merged file set instead of being
+  inherited from the run that happens to publish. A cross-compiled target cannot
+  be smoke-tested on the building host, so its own manifest summarises as
+  `unknown`; publishing that over verified siblings blocked promotion for a
+  channel whose required artifacts were in fact verified.
+- `summarize_plugin_verification/1` reads plugin checks whether they carry atom
+  keys (produced by this run) or string keys (decoded from a fetched manifest).
+  Fetched checks were previously invisible to the summary.
+
+### Added
+- `Deployer.compose_sibling_targets/3`, the pure sibling-selection step, so the
+  union is testable without a network round trip.
+
 ## [0.2.36]
 
 ### Fixed

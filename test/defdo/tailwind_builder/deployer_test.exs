@@ -1134,5 +1134,87 @@ defmodule Defdo.TailwindBuilder.DeployerTest do
       assert composed.total_files == 1
       assert [%{target_key: "linux-x64"}] = composed.files
     end
+
+    # A cross-compiled target cannot be smoke-tested on the building host, so its
+    # own manifest carries no plugin checks and summarises as `unknown`. Composing
+    # must summarise the merged file set instead of keeping this run's verdict,
+    # or that build publishes `unknown` over verified siblings and blocks promotion.
+    test "verification is recomputed over the composed files, not inherited" do
+      unverified_base =
+        local_linux_manifest()
+        |> Map.put(:plugin_verification, %{status: :unknown, checks: []})
+
+      verified_sibling =
+        "tailwindcss-macos-arm64"
+        |> sibling_manifest("macos-arm64", "macsum")
+        |> put_in(["files", Access.at(0), "plugin_checks"], [
+          %{"plugin" => "daisyui", "status" => "verified", "expected" => [".btn"]}
+        ])
+
+      composed = Deployer.compose_manifest(unverified_base, [verified_sibling])
+
+      assert composed.plugin_verification.status == :verified
+      assert [%{"plugin" => "daisyui"}] = composed.plugin_verification.checks
+    end
+
+    test "a failed check anywhere in the composed set fails the whole manifest" do
+      failed_sibling =
+        "tailwindcss-macos-arm64"
+        |> sibling_manifest("macos-arm64", "macsum")
+        |> put_in(["files", Access.at(0), "plugin_checks"], [
+          %{"plugin" => "daisyui", "status" => "failed", "expected" => [".btn"]}
+        ])
+
+      composed = Deployer.compose_manifest(local_linux_manifest(), [failed_sibling])
+
+      assert composed.plugin_verification.status == :failed
+    end
+  end
+
+  describe "compose_sibling_targets/3" do
+    defp published_manifest(target_keys) do
+      %{
+        "files" =>
+          Enum.map(target_keys, fn key ->
+            %{"filename" => "tailwindcss-#{key}", "target_key" => key}
+          end)
+      }
+    end
+
+    # The Hub names only a recipe's required targets. Before this, building one
+    # optional target composed a manifest of the required set plus itself, which
+    # dropped every other optional target already published — their Hub rows fell
+    # back from `published` to `buildable_now` on each other's builds.
+    test "folds in published targets the caller never named" do
+      siblings =
+        Deployer.compose_sibling_targets(
+          ["linux-x64", "linux-arm64", "macos-arm64"],
+          published_manifest([
+            "linux-x64",
+            "linux-arm64",
+            "macos-arm64",
+            "linux-x64-musl"
+          ]),
+          "linux-arm64-musl"
+        )
+
+      assert "linux-x64-musl" in siblings
+    end
+
+    test "excludes this run's own target and de-duplicates" do
+      siblings =
+        Deployer.compose_sibling_targets(
+          ["linux-x64", "linux-arm64"],
+          published_manifest(["linux-x64", "linux-arm64"]),
+          "linux-x64"
+        )
+
+      assert siblings == ["linux-arm64"]
+    end
+
+    test "falls back to the named targets when nothing is published yet" do
+      assert Deployer.compose_sibling_targets(["linux-x64", "macos-arm64"], nil, "linux-arm64") ==
+               ["linux-x64", "macos-arm64"]
+    end
   end
 end
