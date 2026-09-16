@@ -2432,6 +2432,7 @@ defmodule Defdo.TailwindBuilder.Deployer do
         "#{ctx.dst_prefix}/#{ctx.dst_channel}"
       )
       |> String.replace(ctx.src_prefix, ctx.dst_prefix)
+      |> retarget_release_channel(ctx.dst_channel)
 
     case Req.put(ctx.req,
            url: "/#{ctx.bucket}/#{ctx.dst_prefix}/#{ctx.dst_channel}/#{name}",
@@ -2439,6 +2440,28 @@ defmodule Defdo.TailwindBuilder.Deployer do
          ) do
       {:ok, %{status: status}} when status in 200..299 -> {:cont, :ok}
       error -> {:halt, {:error, {:rewrite_failed, name, error}}}
+    end
+  end
+
+  @doc """
+  Point a promoted manifest's `release_channel` at the channel it now serves.
+
+  Promotion rewrites paths textually, which leaves `release_channel` naming the
+  channel the artifacts were BUILT in. A manifest served from `.../v4.3.3/` that
+  announces itself as `v4.3.3-rc1` tells every consumer reading that field that
+  production is a pre-release. JSON without the key, and non-JSON bodies, are
+  returned untouched. Pure.
+  """
+  @spec retarget_release_channel(String.t(), String.t()) :: String.t()
+  def retarget_release_channel(json, dst_channel) do
+    case Jason.decode(json) do
+      {:ok, %{"release_channel" => _} = manifest} ->
+        manifest
+        |> Map.put("release_channel", dst_channel)
+        |> Jason.encode!(pretty: true)
+
+      _ ->
+        json
     end
   end
 
