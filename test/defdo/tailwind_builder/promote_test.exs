@@ -19,6 +19,31 @@ defmodule Defdo.TailwindBuilder.PromoteTest do
              Deployer.promote_channel(channel: "v4.3.2-rc1", fetcher: fetcher)
   end
 
+  describe "retarget_release_channel/2" do
+    # Promotion rewrites paths textually, so before this the prod manifest kept
+    # the canary channel: `.../tailwind_cli_daisyui/v4.3.3/manifest.json` served
+    # `"release_channel": "v4.3.3-rc1"`, and anything reading that field saw
+    # production announce itself as a pre-release.
+    test "points the channel at the one the manifest now serves" do
+      json = Jason.encode!(%{"version" => "4.3.3", "release_channel" => "v4.3.3-rc1"})
+
+      assert %{"release_channel" => "v4.3.3", "version" => "4.3.3"} =
+               json |> Deployer.retarget_release_channel("v4.3.3") |> Jason.decode!()
+    end
+
+    test "leaves JSON without the key untouched" do
+      json = Jason.encode!(%{"version" => "4.3.3"})
+
+      assert Jason.decode!(Deployer.retarget_release_channel(json, "v4.3.3")) == %{
+               "version" => "4.3.3"
+             }
+    end
+
+    test "passes a non-JSON body through" do
+      assert Deployer.retarget_release_channel("not-json", "v4.3.3") == "not-json"
+    end
+  end
+
   describe "promotion file gate" do
     setup do
       original = Application.get_env(:tailwind_builder, :storage)

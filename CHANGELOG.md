@@ -2,6 +2,20 @@
 
 ## [Unreleased]
 
+## [0.2.38]
+
+### Fixed
+- A promoted manifest now names the channel it serves. Promotion rewrites the
+  source manifest textually, which moved every path but left
+  `release_channel` naming the channel the artifacts were BUILT in: the
+  production manifest at `tailwind_cli_daisyui/v4.3.3/manifest.json` announced
+  itself as `v4.3.3-rc1`, so any consumer reading that field saw production as
+  a pre-release.
+
+### Added
+- `Deployer.retarget_release_channel/2`, the pure rewrite step, so the
+  behaviour is testable without copying objects.
+
 ## [0.2.37]
 
 ### Fixed
